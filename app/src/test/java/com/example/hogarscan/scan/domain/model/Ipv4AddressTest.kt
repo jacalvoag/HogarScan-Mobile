@@ -79,4 +79,26 @@ class Ipv4AddressTest {
             Ipv4Address.parse("192.168.001.10")
         }
     }
+
+    @Test
+    fun `crea una IPv4 desde su valor numerico`() {
+        assertEquals(
+            "192.168.1.10",
+            Ipv4Address.fromValue(3_232_235_786L).toString()
+        )
+        assertEquals("0.0.0.0", Ipv4Address.fromValue(0L).toString())
+        assertEquals(
+            "255.255.255.255",
+            Ipv4Address.fromValue(4_294_967_295L).toString()
+        )
+    }
+
+    @Test
+    fun `rechaza valores numericos fuera de IPv4`() {
+        listOf(-1L, 4_294_967_296L).forEach { value ->
+            assertThrows(IllegalArgumentException::class.java) {
+                Ipv4Address.fromValue(value)
+            }
+        }
+    }
 }

@@ -16,6 +16,14 @@ value class Ipv4Address private constructor(
     }
 
     companion object {
+
+        fun fromValue(value: Long): Ipv4Address {
+            require(value in 0L..4_294_967_295L) {
+                "El valor debe estar entre 0 y 4294967295."
+            }
+
+            return Ipv4Address(value)
+        }
         fun parse(text: String): Ipv4Address {
             val octets = text.split('.')
 
