@@ -5,10 +5,13 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import com.example.hogarscan.scan.domain.model.Ipv4Address
 import com.example.hogarscan.scan.domain.model.NetworkScope
+import com.example.hogarscan.scan.domain.model.ScanConnectionChangedException
 import com.example.hogarscan.scan.domain.model.WifiNetworkResult
 import com.example.hogarscan.scan.domain.model.WifiNetworkResult.Reason
 import com.example.hogarscan.scan.domain.repository.WifiNetworkRepository
 import java.net.Inet4Address
+import java.net.Socket
+import java.io.IOException
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -119,6 +122,55 @@ class AndroidWifiNetworkRepository(
         withContext(ioDispatcher) {
             readCurrentNetwork()
         }
+
+
+    internal fun isConnectionCurrent(connectionId: String): Boolean {
+        val result = readCurrentNetwork() as? WifiNetworkResult.Available
+            ?: return false
+        return result.connectionId == connectionId
+    }
+
+    internal fun openProbeSocket(
+        connectionId: String,
+        address: Ipv4Address
+    ): Socket {
+        val result = readCurrentNetwork() as? WifiNetworkResult.Available
+            ?: throw ScanConnectionChangedException()
+
+        if (result.connectionId != connectionId) {
+            throw ScanConnectionChangedException()
+        }
+        require(
+            result.scope.containsHost(address) &&
+                address != result.scope.localAddress
+        ) {
+            "La dirección debe ser otro host de la subred autorizada."
+        }
+
+        val network = connectivityManager.activeNetwork
+            ?: throw ScanConnectionChangedException()
+
+        val currentId = "${network.networkHandle}:${connectionRevision.get()}"
+        if (currentId != connectionId) {
+            throw ScanConnectionChangedException()
+        }
+
+        val socket = Socket()
+        try {
+            network.bindSocket(socket)
+            if (!isConnectionCurrent(connectionId)) {
+                throw ScanConnectionChangedException()
+            }
+            return socket
+        } catch (exception: Exception) {
+            try {
+                socket.close()
+            } catch (_: IOException) {
+                // Conserva el error que impidió preparar el socket.
+            }
+            throw exception
+        }
+    }
 
     private fun readCurrentNetwork(): WifiNetworkResult {
         return try {

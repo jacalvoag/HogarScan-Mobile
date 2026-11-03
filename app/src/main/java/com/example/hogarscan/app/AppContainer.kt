@@ -5,13 +5,16 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.hogarscan.scan.data.network.AndroidWifiNetworkRepository
-import com.example.hogarscan.scan.domain.repository.WifiNetworkRepository
+import com.example.hogarscan.scan.data.network.AndroidTcpProbe
+import com.example.hogarscan.scan.domain.repository.TcpProbe
 import com.example.hogarscan.scan.presentation.WifiViewModel
 
 class AppContainer(context: Context) {
 
-    private val wifiNetworkRepository: WifiNetworkRepository =
+    private val wifiNetworkRepository =
         AndroidWifiNetworkRepository(context.applicationContext)
+
+    val tcpProbe: TcpProbe = AndroidTcpProbe(wifiNetworkRepository)
 
     val wifiViewModelFactory: ViewModelProvider.Factory =
         viewModelFactory {
