@@ -9,6 +9,7 @@ import com.example.hogarscan.scan.domain.model.WifiNetworkResult
 import com.example.hogarscan.scan.domain.model.WifiNetworkResult.Reason
 import com.example.hogarscan.scan.domain.repository.WifiNetworkRepository
 import java.net.Inet4Address
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -30,15 +31,32 @@ class AndroidWifiNetworkRepository(
         )
     )
 
+    // Conserva las transiciones aunque el Flow agrupe avisos consecutivos.
+    private val connectionRevision = AtomicLong(0L)
+
     override fun observeNetworkChanges(): Flow<Unit> =
         callbackFlow<Unit> {
             val callback = object : ConnectivityManager.NetworkCallback() {
+                private var currentNetwork: Network? = null
+                private var ipv4Signature: List<String>? = null
+                private var transportSignature: Pair<Boolean, Boolean>? = null
 
                 override fun onAvailable(network: Network) {
+                    if (currentNetwork != network) {
+                        currentNetwork = network
+                        ipv4Signature = null
+                        transportSignature = null
+                        connectionRevision.incrementAndGet()
+                    }
                     trySend(Unit)
                 }
 
                 override fun onLost(network: Network) {
+                    if (currentNetwork != network) return
+                    currentNetwork = null
+                    ipv4Signature = null
+                    transportSignature = null
+                    connectionRevision.incrementAndGet()
                     trySend(Unit)
                 }
 
@@ -46,6 +64,20 @@ class AndroidWifiNetworkRepository(
                     network: Network,
                     networkCapabilities: NetworkCapabilities
                 ) {
+                    if (currentNetwork != network) return
+                    val signature = Pair(
+                        networkCapabilities.hasTransport(
+                            NetworkCapabilities.TRANSPORT_WIFI
+                        ),
+                        networkCapabilities.hasTransport(
+                            NetworkCapabilities.TRANSPORT_VPN
+                        )
+                    )
+                    if (transportSignature == signature) return
+                    if (transportSignature != null) {
+                        connectionRevision.incrementAndGet()
+                    }
+                    transportSignature = signature
                     trySend(Unit)
                 }
 
@@ -53,6 +85,17 @@ class AndroidWifiNetworkRepository(
                     network: Network,
                     linkProperties: LinkProperties
                 ) {
+                    if (currentNetwork != network) return
+                    val signature = linkProperties.linkAddresses
+                        .filter { it.address is Inet4Address }
+                        .map { "${it.address.hostAddress}/${it.prefixLength}" }
+                        .sorted()
+
+                    if (ipv4Signature == signature) return
+                    if (ipv4Signature != null) {
+                        connectionRevision.incrementAndGet()
+                    }
+                    ipv4Signature = signature
                     trySend(Unit)
                 }
             }
@@ -79,6 +122,7 @@ class AndroidWifiNetworkRepository(
 
     private fun readCurrentNetwork(): WifiNetworkResult {
         return try {
+            val revision = connectionRevision.get()
             val network = connectivityManager.activeNetwork
                 ?: return unavailable(Reason.NO_NETWORK)
 
@@ -131,13 +175,15 @@ class AndroidWifiNetworkRepository(
                 return unavailable(Reason.UNSUPPORTED_SUBNET)
             }
 
-            if (connectivityManager.activeNetwork != network) {
+            if (connectivityManager.activeNetwork != network ||
+                connectionRevision.get() != revision
+            ) {
                 return unavailable(Reason.NETWORK_CHANGED)
             }
 
             WifiNetworkResult.Available(
                 scope = scope,
-                connectionId = network.networkHandle.toString()
+                connectionId = "${network.networkHandle}:$revision"
             )
         } catch (_: SecurityException) {
             unavailable(Reason.PERMISSION_DENIED)

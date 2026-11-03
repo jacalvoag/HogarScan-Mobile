@@ -3,6 +3,7 @@ package com.example.hogarscan.scan.presentation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -24,11 +25,25 @@ fun WifiRoute(
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val setupState by viewModel.setupState.collectAsStateWithLifecycle()
 
 
     WifiScreen(
         state = state,
         onRefresh = viewModel::refresh,
+        formContent = {
+            ScanSetupForm(
+                state = setupState,
+                onStartChange = viewModel::updateStartAddress,
+                onEndChange = viewModel::updateEndAddress,
+                onPortToggle = viewModel::togglePort,
+                onReview = viewModel::reviewConfiguration,
+                onDismiss = viewModel::dismissConfirmation,
+                onConfirm = viewModel::confirmAuthorization,
+                onRevoke = viewModel::revokeAuthorization,
+                modifier = Modifier.padding(top = 24.dp)
+            )
+        },
         modifier = modifier
     )
 }
@@ -37,11 +52,13 @@ fun WifiRoute(
 private fun WifiScreen(
     state: WifiUiState,
     onRefresh: () -> Unit,
+    formContent: @Composable () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier
             .fillMaxSize()
+            .imePadding()
             .verticalScroll(rememberScrollState())
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -110,6 +127,8 @@ private fun WifiScreen(
         ) {
             Text("Actualizar")
         }
+
+        formContent()
     }
 }
 
