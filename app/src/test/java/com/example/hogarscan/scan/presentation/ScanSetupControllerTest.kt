@@ -246,4 +246,38 @@ class ScanSetupControllerTest {
         controller.confirmAuthorization()
         assertNotNull(controller.state.authorizedConfig)
     }
+
+    @Test
+    fun `transfiere una autorizacion para iniciar una sola revision`() {
+        val controller = authorized()
+
+        val request = requireNotNull(controller.takeAuthorizedScan())
+
+        assertTrue(request.validate(wifi()))
+        assertNull(controller.state.authorizedConfig)
+        assertNull(controller.takeAuthorizedScan())
+        request.revoke()
+        assertFalse(request.validate(wifi()))
+    }
+
+    @Test
+    fun `espera a terminar la consulta de red antes de transferir la autorizacion`() {
+        val controller = authorized()
+        controller.onNetworkChecking()
+
+        assertNull(controller.takeAuthorizedScan())
+        assertNotNull(controller.state.authorizedConfig)
+
+        controller.onNetworkResult(wifi())
+
+        assertNotNull(controller.takeAuthorizedScan())
+    }
+
+    @Test
+    fun `no puede iniciar despues de editar el alcance autorizado`() {
+        val controller = authorized()
+        controller.updateEndAddress("192.168.28.46")
+
+        assertNull(controller.takeAuthorizedScan())
+    }
 }

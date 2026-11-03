@@ -36,9 +36,11 @@ fun ScanSetupForm(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
     onRevoke: () -> Unit,
+    onStart: () -> Unit,
+    scanInProgress: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val enabled = state.networkAvailable && !state.checkingNetwork
+    val enabled = state.networkAvailable && !state.checkingNetwork && !scanInProgress
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -106,6 +108,8 @@ fun ScanSetupForm(
         }
 
         when {
+            scanInProgress -> Text("La configuración está bloqueada durante la revisión.")
+
             state.checkingNetwork -> Text("Comprobando la conexión…")
 
             !state.networkAvailable ->
@@ -121,6 +125,9 @@ fun ScanSetupForm(
                     "${config.targetAddresses.size} direcciones objetivo · " +
                         "${config.plannedProbeCount} intentos TCP"
                 )
+                Button(onClick = onStart) {
+                    Text("Iniciar revisión")
+                }
                 OutlinedButton(onClick = onRevoke) {
                     Text("Revocar autorización")
                 }

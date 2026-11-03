@@ -26,6 +26,7 @@ fun WifiRoute(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val setupState by viewModel.setupState.collectAsStateWithLifecycle()
+    val scanState by viewModel.scanState.collectAsStateWithLifecycle()
 
 
     WifiScreen(
@@ -41,6 +42,13 @@ fun WifiRoute(
                 onDismiss = viewModel::dismissConfirmation,
                 onConfirm = viewModel::confirmAuthorization,
                 onRevoke = viewModel::revokeAuthorization,
+                onStart = viewModel::startScan,
+                scanInProgress = scanState.isActive,
+                modifier = Modifier.padding(top = 24.dp)
+            )
+            ScanResultsPanel(
+                state = scanState,
+                onCancel = viewModel::cancelScan,
                 modifier = Modifier.padding(top = 24.dp)
             )
         },

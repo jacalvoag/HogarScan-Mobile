@@ -80,7 +80,7 @@ class WifiViewModelTest {
         )
         repository.response = available
 
-        val viewModel = WifiViewModel(repository)
+        val viewModel = networkTestViewModel(repository)
 
         assertEquals(WifiUiState.Idle, viewModel.uiState.value)
 
@@ -107,7 +107,7 @@ class WifiViewModelTest {
             connectionId = "connection-1"
         )
 
-        val viewModel = WifiViewModel(repository)
+        val viewModel = networkTestViewModel(repository)
         viewModel.refresh()
         advanceUntilIdle()
 
@@ -131,7 +131,7 @@ class WifiViewModelTest {
     @Test
     fun `ignora nuevas consultas mientras hay una en curso`() = runTest {
         val repository = FakeRepository()
-        val viewModel = WifiViewModel(repository)
+        val viewModel = networkTestViewModel(repository)
 
         viewModel.refresh()
         runCurrent()
@@ -156,7 +156,7 @@ class WifiViewModelTest {
         val repository = FakeRepository()
         repository.failure = IllegalStateException("Fallo simulado")
 
-        val viewModel = WifiViewModel(repository)
+        val viewModel = networkTestViewModel(repository)
         viewModel.refresh()
         advanceUntilIdle()
 
@@ -177,7 +177,7 @@ class WifiViewModelTest {
     @Test
     fun `consulta automaticamente cuando recibe un cambio de red`() = runTest {
         val repository = FakeRepository()
-        val viewModel = WifiViewModel(repository)
+        val viewModel = networkTestViewModel(repository)
 
         // Inicia la suscripcion del ViewModel.
         runCurrent()
@@ -204,7 +204,7 @@ class WifiViewModelTest {
         )
         repository.response = previousNetwork
 
-        val viewModel = WifiViewModel(repository)
+        val viewModel = networkTestViewModel(repository)
         viewModel.refresh()
 
         // La primera consulta queda suspendida dentro de delay.

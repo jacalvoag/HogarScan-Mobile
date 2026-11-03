@@ -7,6 +7,7 @@ class ScanAuthorization private constructor(
     private val ports: List<Int>,
     private val connectionId: String
 ) {
+    @Volatile
     private var revoked = false
 
     fun revoke() {

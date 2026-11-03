@@ -7,6 +7,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.hogarscan.scan.data.network.AndroidWifiNetworkRepository
 import com.example.hogarscan.scan.data.network.AndroidTcpProbe
 import com.example.hogarscan.scan.domain.repository.TcpProbe
+import com.example.hogarscan.scan.domain.usecase.ScanCoordinator
 import com.example.hogarscan.scan.presentation.WifiViewModel
 
 class AppContainer(context: Context) {
@@ -16,10 +17,12 @@ class AppContainer(context: Context) {
 
     val tcpProbe: TcpProbe = AndroidTcpProbe(wifiNetworkRepository)
 
+    private val scanCoordinator = ScanCoordinator(wifiNetworkRepository, tcpProbe)
+
     val wifiViewModelFactory: ViewModelProvider.Factory =
         viewModelFactory {
             initializer {
-                WifiViewModel(wifiNetworkRepository)
+                WifiViewModel(wifiNetworkRepository, scanCoordinator)
             }
         }
 }

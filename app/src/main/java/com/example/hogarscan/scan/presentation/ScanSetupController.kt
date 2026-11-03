@@ -1,6 +1,7 @@
 package com.example.hogarscan.scan.presentation
 
 import com.example.hogarscan.scan.domain.model.Ipv4Address
+import com.example.hogarscan.scan.domain.model.AuthorizedScan
 import com.example.hogarscan.scan.domain.model.ScanAuthorization
 import com.example.hogarscan.scan.domain.model.ScanConfig
 import com.example.hogarscan.scan.domain.model.WifiNetworkResult
@@ -145,6 +146,30 @@ class ScanSetupController {
             invalidate(null)
             state = state.copy(error = exception.message)
         }
+    }
+
+    fun takeAuthorizedScan(): AuthorizedScan? {
+        if (state.checkingNetwork || !state.networkAvailable) return null
+
+        val config = state.authorizedConfig ?: return null
+        val currentNetwork = network ?: return null
+        val confirmed = authorization ?: return null
+
+        if (!confirmed.validate(config, currentNetwork)) {
+            invalidate("La autorización dejó de ser válida. Vuelve a confirmar.")
+            return null
+        }
+
+        val request = AuthorizedScan(
+            config = config,
+            connectionId = currentNetwork.connectionId,
+            authorization = confirmed
+        )
+
+        // Transfiere la autorización al coordinador sin revocarla todavía.
+        authorization = null
+        state = state.copy(authorizedConfig = null, notice = null)
+        return request
     }
 
     fun revokeAuthorization() {

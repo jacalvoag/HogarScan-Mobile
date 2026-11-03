@@ -56,7 +56,7 @@ class ScanSetupViewModelTest {
         ViewModelProvider(
             store,
             viewModelFactory {
-                initializer { WifiViewModel(repository) }
+                initializer { networkTestViewModel(repository) }
             }
         )[WifiViewModel::class.java]
 
