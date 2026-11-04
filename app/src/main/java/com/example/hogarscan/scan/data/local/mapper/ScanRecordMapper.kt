@@ -9,6 +9,7 @@ import com.example.hogarscan.scan.domain.model.NetworkScope
 import com.example.hogarscan.scan.domain.model.ProbeResult
 import com.example.hogarscan.scan.domain.model.ScanConfig
 import com.example.hogarscan.scan.domain.model.ScanRecord
+import com.example.hogarscan.scan.domain.model.ScanRecordSummary
 
 fun ScanRecord.toLocal(): ScanRecordWithDetails {
     return ScanRecordWithDetails(
@@ -73,5 +74,15 @@ fun ScanRecordWithDetails.toDomain(): ScanRecord {
             )
         },
         finishedAtMillis = record.finishedAtMillis
+    )
+}
+
+fun ScanRecordEntity.toSummary(): ScanRecordSummary {
+    return ScanRecordSummary(
+        id = id,
+        ownerId = ownerId,
+        status = status,
+        startedAtMillis = startedAtMillis,
+        finishedAtMillis = finishedAtMillis
     )
 }
