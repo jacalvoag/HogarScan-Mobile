@@ -1,9 +1,16 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.androidx.room)
 }
 
 android {
+
+    room {
+        schemaDirectory("$projectDir/schemas")
+    }
+
     namespace = "com.example.hogarscan"
     compileSdk {
         version = release(36)
@@ -57,6 +64,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.androidx.room.runtime)
+    ksp(libs.androidx.room.compiler)
 
     testImplementation(libs.kotlinx.coroutines.test)
 }
