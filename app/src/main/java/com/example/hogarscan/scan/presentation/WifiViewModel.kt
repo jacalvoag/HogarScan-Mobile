@@ -18,6 +18,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.example.hogarscan.scan.domain.model.ScanRecordStatus
+import com.example.hogarscan.scan.domain.model.ScanStoppedException
 
 class WifiViewModel(
     private val repository: WifiNetworkRepository,
@@ -184,7 +186,15 @@ class WifiViewModel(
                 message = "Deteniendo la revisión…"
             )
         }
-        scanJob?.cancel()
+        scanJob?.cancel(
+            ScanStoppedException(
+                if (stopReason == StopReason.NETWORK) {
+                    ScanRecordStatus.INTERRUPTED
+                } else {
+                    ScanRecordStatus.CANCELLED
+                }
+            )
+        )
     }
 
     private fun finishStoppedScan() {

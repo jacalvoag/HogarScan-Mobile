@@ -13,6 +13,8 @@ import com.example.hogarscan.scan.domain.repository.ScanHistoryRepository
 import com.example.hogarscan.scan.domain.repository.TcpProbe
 import com.example.hogarscan.scan.domain.usecase.ScanCoordinator
 import com.example.hogarscan.scan.presentation.WifiViewModel
+import com.example.hogarscan.scan.data.local.LocalHistoryOwner
+import com.example.hogarscan.scan.domain.usecase.ScanHistoryRecorder
 
 class AppContainer(context: Context) {
 
@@ -35,7 +37,18 @@ class AppContainer(context: Context) {
 
     val tcpProbe: TcpProbe = AndroidTcpProbe(wifiNetworkRepository)
 
-    private val scanCoordinator = ScanCoordinator(wifiNetworkRepository, tcpProbe)
+    val localHistoryOwner by lazy { LocalHistoryOwner(appContext) }
+
+    private val scanCoordinator by lazy {
+        ScanCoordinator(
+            wifiNetworkRepository,
+            tcpProbe,
+            historyRecorder = ScanHistoryRecorder(
+                repository = scanHistoryRepository,
+                ownerId = localHistoryOwner::getOwnerId
+            )
+        )
+    }
 
     val wifiViewModelFactory: ViewModelProvider.Factory =
         viewModelFactory {

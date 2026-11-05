@@ -1,5 +1,10 @@
 package com.example.hogarscan.scan.domain.usecase
 
+import com.example.hogarscan.scan.domain.model.ScanRecord
+import com.example.hogarscan.scan.domain.model.ScanRecordStatus
+import com.example.hogarscan.scan.domain.model.ScanRecordSummary
+import com.example.hogarscan.scan.domain.model.ScanStoppedException
+import com.example.hogarscan.scan.domain.repository.ScanHistoryRepository
 import com.example.hogarscan.scan.domain.model.AuthorizedScan
 import com.example.hogarscan.scan.domain.model.Ipv4Address
 import com.example.hogarscan.scan.domain.model.NetworkScope
@@ -386,5 +391,201 @@ class ScanCoordinatorTest {
         }
 
         assertEquals(1, results.size)
+    }
+
+    private class MemoryHistory : ScanHistoryRepository {
+        var current: ScanRecord? = null
+        val results = mutableListOf<ProbeResult>()
+        var onInsert: suspend () -> Unit = {}
+        var failAppend = false
+
+        override suspend fun insert(record: ScanRecord) {
+            onInsert()
+            current = record
+        }
+
+        override suspend fun appendResult(
+            scanId: String,
+            ownerId: String,
+            result: ProbeResult
+        ) {
+            check(!failAppend) { "Fallo de escritura simulado" }
+            assertEquals(current?.id, scanId)
+            assertEquals(current?.ownerId, ownerId)
+            results.add(result)
+        }
+
+        override suspend fun finish(
+            scanId: String,
+            ownerId: String,
+            status: ScanRecordStatus,
+            finishedAtMillis: Long
+        ) {
+            val initial = checkNotNull(current)
+            assertEquals(initial.id, scanId)
+            assertEquals(initial.ownerId, ownerId)
+            current = ScanRecord(
+                initial.id, initial.ownerId, initial.config,
+                initial.startedAtMillis, status, results, finishedAtMillis
+            )
+        }
+
+        override suspend fun findById(scanId: String, ownerId: String) =
+            current?.takeIf { it.id == scanId && it.ownerId == ownerId }
+
+        override fun observeByOwner(ownerId: String): Flow<List<ScanRecordSummary>> =
+            emptyFlow()
+    }
+
+    private fun recorder(history: MemoryHistory) = ScanHistoryRecorder(
+        repository = history,
+        ownerId = { "local:test" },
+        nowMillis = { 2_000L },
+        newId = { "record-1" }
+    )
+
+    @Test
+    fun recordedScan_savesBeforeProbingAndPublishing() = runBlocking {
+        val history = MemoryHistory()
+        val client = probe { address, port ->
+            assertEquals(ScanRecordStatus.RUNNING, history.current?.status)
+            result(address, port)
+        }
+        val config = config(end = "192.168.28.2", ports = setOf(80))
+
+        ScanCoordinator(FakeRepository { network }, client, recorder(history))
+            .execute(request(config)) { published ->
+                assertEquals(published, history.results.last())
+            }
+
+        val stored = checkNotNull(history.current)
+        assertEquals("local:test", stored.ownerId)
+        assertEquals(ScanRecordStatus.COMPLETED, stored.status)
+        assertEquals(2, stored.results.size)
+        assertEquals(2_000L, stored.finishedAtMillis)
+    }
+
+    @Test(timeout = 10_000L)
+    fun recordedScan_preservesPartialResultsAndStopReason() = runBlocking {
+        for (status in listOf(
+            ScanRecordStatus.CANCELLED, ScanRecordStatus.INTERRUPTED
+        )) {
+            val history = MemoryHistory()
+            val published = CompletableDeferred<Unit>()
+            val client = probe { address, port ->
+                if (address == Ipv4Address.parse("192.168.28.1")) {
+                    result(address, port)
+                } else {
+                    awaitCancellation()
+                }
+            }
+            val task = async {
+                ScanCoordinator(FakeRepository { network }, client, recorder(history))
+                    .execute(request(config(end = "192.168.28.2", ports = setOf(80)))) {
+                        published.complete(Unit)
+                    }
+            }
+
+            published.await()
+            task.cancel(ScanStoppedException(status))
+            task.join()
+
+            assertEquals(status, history.current?.status)
+            assertEquals(1, history.current?.results?.size)
+        }
+    }
+
+    @Test
+    fun recordedScan_rechecksNetworkAfterSavingStart() {
+        val history = MemoryHistory()
+        var calls = 0
+        val repository = FakeRepository {
+            if (history.current == null) network
+            else network.copy(connectionId = "wifi-2:1")
+        }
+        val client = probe { address, port ->
+            calls++
+            result(address, port)
+        }
+
+        assertThrows(ScanConnectionChangedException::class.java) {
+            runBlocking {
+                ScanCoordinator(repository, client, recorder(history))
+                    .execute(request()) {}
+            }
+        }
+
+        assertEquals(0, calls)
+        assertEquals(ScanRecordStatus.INTERRUPTED, history.current?.status)
+        assertEquals(0, history.current?.results?.size)
+    }
+
+    @Test
+    fun recordedScan_doesNotProbeWhenInitialSaveFails() {
+        val history = MemoryHistory().apply {
+            onInsert = { error("Sin espacio disponible") }
+        }
+        var calls = 0
+        val client = probe { address, port ->
+            calls++
+            result(address, port)
+        }
+
+        assertThrows(IllegalStateException::class.java) {
+            runBlocking {
+                ScanCoordinator(FakeRepository { network }, client, recorder(history))
+                    .execute(request()) {}
+            }
+        }
+
+        assertEquals(0, calls)
+        assertEquals(null, history.current)
+    }
+
+    @Test(timeout = 10_000L)
+    fun recordedScan_cancellationDuringInsertStillClosesRecord() = runBlocking {
+        lateinit var task: Job
+        val history = MemoryHistory().apply {
+            onInsert = {
+                task.cancel(ScanStoppedException(ScanRecordStatus.CANCELLED))
+                delay(1)
+            }
+        }
+        var calls = 0
+        val client = probe { address, port ->
+            calls++
+            result(address, port)
+        }
+        task = launch(start = CoroutineStart.LAZY) {
+            ScanCoordinator(FakeRepository { network }, client, recorder(history))
+                .execute(request()) {}
+        }
+
+        task.start()
+        task.join()
+
+        assertEquals(0, calls)
+        assertEquals(ScanRecordStatus.CANCELLED, history.current?.status)
+        assertEquals(0, history.current?.results?.size)
+    }
+
+    @Test
+    fun recordedScan_writeFailureStopsExecutionAndMarksFailure() {
+        val history = MemoryHistory().apply { failAppend = true }
+        val published = mutableListOf<ProbeResult>()
+        val client = probe(::result)
+
+        assertThrows(IllegalStateException::class.java) {
+            runBlocking {
+                ScanCoordinator(FakeRepository { network }, client, recorder(history))
+                    .execute(request(config(end = "192.168.28.2", ports = setOf(80)))) {
+                        published.add(it)
+                    }
+            }
+        }
+
+        assertEquals(ScanRecordStatus.FAILED, history.current?.status)
+        assertTrue(published.isEmpty())
+        assertTrue(history.results.isEmpty())
     }
 }

@@ -1,6 +1,9 @@
 package com.example.hogarscan.scan.domain.usecase
 
 import com.example.hogarscan.scan.domain.model.AuthorizedScan
+import com.example.hogarscan.scan.domain.model.ScanRecord
+import com.example.hogarscan.scan.domain.model.ScanRecordStatus
+import com.example.hogarscan.scan.domain.model.ScanStoppedException
 import com.example.hogarscan.scan.domain.model.ProbeResult
 import com.example.hogarscan.scan.domain.model.ScanConnectionChangedException
 import com.example.hogarscan.scan.domain.model.WifiNetworkResult
@@ -8,6 +11,7 @@ import com.example.hogarscan.scan.domain.policy.ScanPolicy
 import com.example.hogarscan.scan.domain.repository.TcpProbe
 import com.example.hogarscan.scan.domain.repository.WifiNetworkRepository
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
@@ -19,7 +23,8 @@ import kotlinx.coroutines.withContext
 
 class ScanCoordinator(
     private val networkRepository: WifiNetworkRepository,
-    private val tcpProbe: TcpProbe
+    private val tcpProbe: TcpProbe,
+    private val historyRecorder: ScanHistoryRecorder? = null
 ) {
     private val executionGate = Mutex()
 
@@ -33,8 +38,19 @@ class ScanCoordinator(
             request.revoke()
             error("Ya hay una revisión en ejecución.")
         }
+        var historyRecord: ScanRecord? = null
+        var finalStatus = ScanRecordStatus.FAILED
+        var failure: Throwable? = null
+
         try {
             checkAuthorization(request)
+            historyRecorder?.let { recorder ->
+                withContext(NonCancellable) {
+                    historyRecord = recorder.start(request.config)
+                }
+                // El guardado pudo suspender: comprueba de nuevo la conexión.
+                checkAuthorization(request)
+            }
             onStarted()
 
             val targets = request.config.targetAddresses.flatMap { address ->
@@ -59,9 +75,13 @@ class ScanCoordinator(
                             )
 
                             // Conserva un resultado ya recibido aunque se cancele.
-                            // Este bloque solo publica datos; no abre conexiones.
+                            // Guarda y publica datos; no abre conexiones.
                             withContext(NonCancellable) {
                                 resultMutex.withLock {
+                                    val record = historyRecord
+                                    if (record != null) {
+                                        historyRecorder?.append(record, result)
+                                    }
                                     onResult(result)
                                 }
                             }
@@ -71,10 +91,37 @@ class ScanCoordinator(
             }
 
             checkAuthorization(request)
+            finalStatus = ScanRecordStatus.COMPLETED
+        } catch (exception: Throwable) {
+            failure = exception
+            finalStatus = when (exception) {
+                is ScanStoppedException -> exception.status
+                is CancellationException,
+                is ScanConnectionChangedException -> ScanRecordStatus.INTERRUPTED
+                else -> ScanRecordStatus.FAILED
+            }
+            throw exception
         } finally {
-            // Cada confirmación se utiliza para una sola ejecución.
-            request.revoke()
-            executionGate.unlock()
+            try {
+                val record = historyRecord
+                if (record != null) {
+                    withContext(NonCancellable) {
+                        try {
+                            historyRecorder?.finish(record, finalStatus)
+                        } catch (exception: Exception) {
+                            val original = failure
+                            if (original != null) {
+                                original.addSuppressed(exception)
+                            } else {
+                                throw exception
+                            }
+                        }
+                    }
+                }
+            } finally {
+                request.revoke()
+                executionGate.unlock()
+            }
         }
     }
 
