@@ -15,6 +15,7 @@ import com.example.hogarscan.scan.domain.usecase.ScanCoordinator
 import com.example.hogarscan.scan.presentation.WifiViewModel
 import com.example.hogarscan.scan.data.local.LocalHistoryOwner
 import com.example.hogarscan.scan.domain.usecase.ScanHistoryRecorder
+import com.example.hogarscan.scan.presentation.ScanHistoryViewModel
 
 class AppContainer(context: Context) {
 
@@ -54,6 +55,16 @@ class AppContainer(context: Context) {
         viewModelFactory {
             initializer {
                 WifiViewModel(wifiNetworkRepository, scanCoordinator)
+            }
+        }
+
+    val scanHistoryViewModelFactory: ViewModelProvider.Factory =
+        viewModelFactory {
+            initializer {
+                ScanHistoryViewModel(
+                    repository = scanHistoryRepository,
+                    ownerId = localHistoryOwner::getOwnerId
+                )
             }
         }
 }
