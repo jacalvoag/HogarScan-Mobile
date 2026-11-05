@@ -3,6 +3,8 @@ package com.example.hogarscan.scan.domain.repository
 import com.example.hogarscan.scan.domain.model.ScanRecord
 import com.example.hogarscan.scan.domain.model.ScanRecordSummary
 import kotlinx.coroutines.flow.Flow
+import com.example.hogarscan.scan.domain.model.ProbeResult
+import com.example.hogarscan.scan.domain.model.ScanRecordStatus
 
 interface ScanHistoryRepository {
 
@@ -24,4 +26,17 @@ interface ScanHistoryRepository {
      * Observa el historial del propietario, de más reciente a más antiguo.
      */
     fun observeByOwner(ownerId: String): Flow<List<ScanRecordSummary>>
+
+    suspend fun appendResult(
+        scanId: String,
+        ownerId: String,
+        result: ProbeResult
+    )
+
+    suspend fun finish(
+        scanId: String,
+        ownerId: String,
+        status: ScanRecordStatus,
+        finishedAtMillis: Long
+    )
 }

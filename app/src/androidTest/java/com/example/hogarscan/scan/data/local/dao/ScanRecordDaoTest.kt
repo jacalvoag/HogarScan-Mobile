@@ -122,6 +122,127 @@ class ScanRecordDaoTest {
         assertNull(dao.findById("missing", "owner-a"))
     }
 
+    @Test
+    fun appendAndFinish_preserveCompletedRevision() = runBlocking {
+        val expected = fixture()
+        dao.insertWithDetails(runningFixture())
+
+        expected.results.forEach { result ->
+            dao.appendResult(
+                ownerId = expected.record.ownerId,
+                result = result
+            )
+        }
+
+        dao.finish(
+            scanId = expected.record.id,
+            ownerId = expected.record.ownerId,
+            status = ScanRecordStatus.COMPLETED,
+            finishedAtMillis = requireNotNull(expected.record.finishedAtMillis)
+        )
+
+        val actual = checkNotNull(
+            dao.findById(expected.record.id, expected.record.ownerId)
+        )
+
+        assertEquals(expected.record, actual.record)
+        assertEquals(
+            expected.ports.sortedBy { it.port },
+            actual.ports.sortedBy { it.port }
+        )
+        assertEquals(
+            expected.results.sortedBy { it.port },
+            actual.results.sortedBy { it.port }
+        )
+    }
+
+    @Test
+    fun incompleteRevision_rejectsCompletionButAllowsCancellation() = runBlocking {
+        val initial = runningFixture()
+        val result = fixture().results.first()
+
+        dao.insertWithDetails(initial)
+        dao.appendResult(initial.record.ownerId, result)
+
+        try {
+            dao.finish(
+                scanId = initial.record.id,
+                ownerId = initial.record.ownerId,
+                status = ScanRecordStatus.COMPLETED,
+                finishedAtMillis = 3_000L
+            )
+            fail("Una revisión incompleta no debe cerrarse como completada.")
+        } catch (_: IllegalArgumentException) {
+            // El dominio rechaza el cierre con intentos pendientes.
+        }
+
+        val pending = checkNotNull(
+            dao.findById(initial.record.id, initial.record.ownerId)
+        )
+        assertEquals(ScanRecordStatus.RUNNING, pending.record.status)
+        assertNull(pending.record.finishedAtMillis)
+        assertEquals(listOf(result), pending.results)
+
+        dao.finish(
+            scanId = initial.record.id,
+            ownerId = initial.record.ownerId,
+            status = ScanRecordStatus.CANCELLED,
+            finishedAtMillis = 3_000L
+        )
+
+        val cancelled = checkNotNull(
+            dao.findById(initial.record.id, initial.record.ownerId)
+        )
+        assertEquals(ScanRecordStatus.CANCELLED, cancelled.record.status)
+        assertEquals(3_000L, cancelled.record.finishedAtMillis)
+        assertEquals(listOf(result), cancelled.results)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun appendResult_rejectsAnotherOwner() = runBlocking {
+        dao.insertWithDetails(runningFixture())
+
+        dao.appendResult(
+            ownerId = "owner-b",
+            result = fixture().results.first()
+        )
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun finish_rejectsAnotherOwner() = runBlocking {
+        val initial = runningFixture()
+        dao.insertWithDetails(initial)
+
+        dao.finish(
+            scanId = initial.record.id,
+            ownerId = "owner-b",
+            status = ScanRecordStatus.CANCELLED,
+            finishedAtMillis = 3_000L
+        )
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun appendResult_rejectsClosedRevision() = runBlocking {
+        val completed = fixture()
+        dao.insertWithDetails(completed)
+
+        dao.appendResult(
+            ownerId = completed.record.ownerId,
+            result = completed.results.first()
+        )
+    }
+
+    private fun runningFixture(): ScanRecordWithDetails {
+        val completed = fixture()
+
+        return completed.copy(
+            record = completed.record.copy(
+                status = ScanRecordStatus.RUNNING,
+                finishedAtMillis = null
+            ),
+            results = emptyList()
+        )
+    }
     private fun fixture(
         id: String = "scan-1",
         ownerId: String = "owner-a",
