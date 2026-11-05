@@ -136,4 +136,18 @@ abstract class ScanRecordDao {
     protected abstract suspend fun updateRecord(
         record: ScanRecordEntity
     ): Int
+
+    @Query(
+        """
+        UPDATE scan_records
+        SET execution_status = :interruptedStatus,
+            finished_at_millis = :finishedAtMillis
+        WHERE execution_status = :runningStatus
+        """
+    )
+    abstract suspend fun recoverRunningRecords(
+        finishedAtMillis: Long,
+        runningStatus: ScanRecordStatus,
+        interruptedStatus: ScanRecordStatus
+    ): Int
 }
