@@ -21,6 +21,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.hogarscan.scan.domain.model.ScanRecordStatus
 import java.text.DateFormat
 import java.util.Date
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 
 @Composable
 fun ScanHistoryRoute(
@@ -28,22 +32,43 @@ fun ScanHistoryRoute(
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val detailState by viewModel.detailState.collectAsStateWithLifecycle()
+    val listState = rememberLazyListState()
 
-    ScanHistoryScreen(
-        state = state,
-        onRetry = viewModel::retry,
-        modifier = modifier
+    BackHandler(
+        enabled = detailState != ScanDetailUiState.Closed,
+        onBack = viewModel::closeDetail
     )
+
+    if (detailState == ScanDetailUiState.Closed) {
+        ScanHistoryScreen(
+            state = state,
+            onRetry = viewModel::retry,
+            onOpenRecord = viewModel::openDetail,
+            listState = listState,
+            modifier = modifier
+        )
+    } else {
+        ScanHistoryDetailScreen(
+            state = detailState,
+            onBack = viewModel::closeDetail,
+            onRetry = viewModel::retryDetail,
+            modifier = modifier
+        )
+    }
 }
 
 @Composable
 private fun ScanHistoryScreen(
     state: ScanHistoryUiState,
     onRetry: () -> Unit,
+    onOpenRecord: (String) -> Unit,
+    listState: LazyListState,
     modifier: Modifier = Modifier
 ) {
     LazyColumn(
         modifier = modifier.fillMaxSize(),
+        state = listState,
         contentPadding = PaddingValues(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -74,7 +99,13 @@ private fun ScanHistoryScreen(
                 }
 
                 items(state.records, key = { it.id }) { record ->
-                    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(onClickLabel = "Ver detalle") {
+                                onOpenRecord(record.id)
+                            }
+                    ) {
                         Column(
                             modifier = Modifier.padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)

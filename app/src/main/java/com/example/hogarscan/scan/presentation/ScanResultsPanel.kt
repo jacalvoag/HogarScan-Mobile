@@ -20,7 +20,7 @@ import com.example.hogarscan.scan.domain.model.ProbeOutcome
 @Composable
 fun ScanResultsPanel(
     state: ScanUiState,
-    onCancel: () -> Unit,
+    onCancel: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     if (state.status == ScanStatus.IDLE) return
@@ -65,7 +65,7 @@ fun ScanResultsPanel(
         Text("Intentos registrados: $finished de $planned")
         state.message?.let { Text(it) }
 
-        if (state.isActive) {
+        if (state.isActive && onCancel != null) {
             OutlinedButton(
                 onClick = onCancel,
                 enabled = state.status != ScanStatus.CANCELLING

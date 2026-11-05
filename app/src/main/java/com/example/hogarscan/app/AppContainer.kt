@@ -16,6 +16,7 @@ import com.example.hogarscan.scan.presentation.WifiViewModel
 import com.example.hogarscan.scan.data.local.LocalHistoryOwner
 import com.example.hogarscan.scan.domain.usecase.ScanHistoryRecorder
 import com.example.hogarscan.scan.presentation.ScanHistoryViewModel
+import androidx.lifecycle.createSavedStateHandle
 
 class AppContainer(context: Context) {
 
@@ -63,7 +64,8 @@ class AppContainer(context: Context) {
             initializer {
                 ScanHistoryViewModel(
                     repository = scanHistoryRepository,
-                    ownerId = localHistoryOwner::getOwnerId
+                    ownerId = localHistoryOwner::getOwnerId,
+                    savedStateHandle = createSavedStateHandle()
                 )
             }
         }
