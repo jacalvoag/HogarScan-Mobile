@@ -33,6 +33,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
+import com.example.hogarscan.auth.domain.model.SessionSnapshot
+import com.example.hogarscan.auth.domain.model.SessionState
+import com.example.hogarscan.auth.domain.repository.SessionReader
+import com.example.hogarscan.scan.domain.usecase.HistoryOwnerResolver
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.test.advanceTimeBy
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ScanHistoryDetailViewModelTest {
@@ -71,15 +78,33 @@ class ScanHistoryDetailViewModelTest {
 
     private fun viewModel(
         repository: FakeRepository,
-        handle: SavedStateHandle = SavedStateHandle()
-    ): ScanHistoryViewModel = ViewModelProvider(
-        store,
-        viewModelFactory {
-            initializer {
-                ScanHistoryViewModel(repository, { "local:test" }, handle)
-            }
+        handle: SavedStateHandle = SavedStateHandle(),
+        sessionState: StateFlow<SessionState> =
+            MutableStateFlow<SessionState>(SessionState.Guest)
+    ): ScanHistoryViewModel {
+        val sessions = object : SessionReader {
+            override val state: StateFlow<SessionState> = sessionState
         }
-    )[ScanHistoryViewModel::class.java]
+
+        val owners = HistoryOwnerResolver(
+            sessions = sessions,
+            guestOwnerId = { "local:test" }
+        )
+
+        return ViewModelProvider(
+            store,
+            viewModelFactory {
+                initializer {
+                    ScanHistoryViewModel(
+                        repository = repository,
+                        owners = owners,
+                        sessions = sessions,
+                        savedStateHandle = handle
+                    )
+                }
+            }
+        )[ScanHistoryViewModel::class.java]
+    }
 
     @Before
     fun setUp() {
@@ -187,7 +212,12 @@ class ScanHistoryDetailViewModelTest {
     fun restoresSelectionAndReloadsRecord() = runTest {
         val expected = record("saved")
         val repository = FakeRepository().apply { read = { _, _ -> expected } }
-        val handle = SavedStateHandle(mapOf("selected_scan_id" to expected.id))
+        val handle = SavedStateHandle(
+            mapOf(
+                "selected_scan_id" to expected.id,
+                "selected_scan_owner_id" to "local:test"
+            )
+        )
         val viewModel = viewModel(repository, handle)
         advanceUntilIdle()
 
@@ -215,5 +245,60 @@ class ScanHistoryDetailViewModelTest {
             ),
             finishedAtMillis = 2_000L
         )
+    }
+
+    @Test
+    fun accountChangeClosesDetailAndDiscardsPendingRead() = runTest {
+        val sessionState = MutableStateFlow<SessionState>(SessionState.Guest)
+        val repository = FakeRepository().apply {
+            read = { id, _ ->
+                withContext(NonCancellable) { delay(100L) }
+                record(id)
+            }
+        }
+        val handle = SavedStateHandle()
+        val viewModel = viewModel(repository, handle, sessionState)
+
+        viewModel.openDetail("scan-1")
+        runCurrent()
+
+        sessionState.value = SessionState.Authenticated(
+            SessionSnapshot(
+                contextId = "context-a",
+                userId = "account-a",
+                email = "account-a@example.com",
+                expiresAtMillis = Long.MAX_VALUE,
+                summaryGeneration = 0
+            )
+        )
+        runCurrent()
+
+        assertEquals(ScanDetailUiState.Closed, viewModel.detailState.value)
+        assertNull(handle.get<String>("selected_scan_id"))
+        assertNull(handle.get<String>("selected_scan_owner_id"))
+
+        advanceTimeBy(100L)
+        runCurrent()
+
+        assertEquals(ScanDetailUiState.Closed, viewModel.detailState.value)
+        assertEquals(listOf("scan-1" to "local:test"), repository.reads)
+    }
+
+    @Test
+    fun savedSelectionFromAnotherOwnerIsDiscardedWithoutReading() = runTest {
+        val repository = FakeRepository()
+        val handle = SavedStateHandle(
+            mapOf(
+                "selected_scan_id" to "another-account-scan",
+                "selected_scan_owner_id" to "user:another-account"
+            )
+        )
+        val viewModel = viewModel(repository, handle)
+        runCurrent()
+
+        assertEquals(ScanDetailUiState.Closed, viewModel.detailState.value)
+        assertEquals(0, repository.reads.size)
+        assertNull(handle.get<String>("selected_scan_id"))
+        assertNull(handle.get<String>("selected_scan_owner_id"))
     }
 }

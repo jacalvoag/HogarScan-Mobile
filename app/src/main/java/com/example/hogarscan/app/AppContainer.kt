@@ -133,7 +133,8 @@ class AppContainer(context: Context) {
             initializer {
                 ScanHistoryViewModel(
                     repository = scanHistoryRepository,
-                    ownerId = localHistoryOwner::getOwnerId,
+                    owners = historyOwnerResolver,
+                    sessions = sessionReader,
                     savedStateHandle = createSavedStateHandle()
                 )
             }
