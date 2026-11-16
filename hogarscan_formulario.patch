@@ -1,0 +1,1132 @@
+diff --git a/app/src/main/java/com/example/hogarscan/scan/data/network/AndroidWifiNetworkRepository.kt b/app/src/main/java/com/example/hogarscan/scan/data/network/AndroidWifiNetworkRepository.kt
+index 79e367c33649437a93e703b973ed475cf7ed78f5..9eae949b3482dc0f0fb14b94d3ca7b3a05ad68a3 100644
+--- a/app/src/main/java/com/example/hogarscan/scan/data/network/AndroidWifiNetworkRepository.kt
++++ b/app/src/main/java/com/example/hogarscan/scan/data/network/AndroidWifiNetworkRepository.kt
+@@ -9,6 +9,7 @@ import com.example.hogarscan.scan.domain.model.WifiNetworkResult
+ import com.example.hogarscan.scan.domain.model.WifiNetworkResult.Reason
+ import com.example.hogarscan.scan.domain.repository.WifiNetworkRepository
+ import java.net.Inet4Address
++import java.util.concurrent.atomic.AtomicLong
+ import kotlinx.coroutines.CoroutineDispatcher
+ import kotlinx.coroutines.Dispatchers
+ import kotlinx.coroutines.withContext
+@@ -30,15 +31,32 @@ class AndroidWifiNetworkRepository(
+         )
+     )
+ 
++    // Conserva las transiciones aunque el Flow agrupe avisos consecutivos.
++    private val connectionRevision = AtomicLong(0L)
++
+     override fun observeNetworkChanges(): Flow<Unit> =
+         callbackFlow<Unit> {
+             val callback = object : ConnectivityManager.NetworkCallback() {
++                private var currentNetwork: Network? = null
++                private var ipv4Signature: List<String>? = null
++                private var transportSignature: Pair<Boolean, Boolean>? = null
+ 
+                 override fun onAvailable(network: Network) {
++                    if (currentNetwork != network) {
++                        currentNetwork = network
++                        ipv4Signature = null
++                        transportSignature = null
++                        connectionRevision.incrementAndGet()
++                    }
+                     trySend(Unit)
+                 }
+ 
+                 override fun onLost(network: Network) {
++                    if (currentNetwork != network) return
++                    currentNetwork = null
++                    ipv4Signature = null
++                    transportSignature = null
++                    connectionRevision.incrementAndGet()
+                     trySend(Unit)
+                 }
+ 
+@@ -46,6 +64,20 @@ class AndroidWifiNetworkRepository(
+                     network: Network,
+                     networkCapabilities: NetworkCapabilities
+                 ) {
++                    if (currentNetwork != network) return
++                    val signature = Pair(
++                        networkCapabilities.hasTransport(
++                            NetworkCapabilities.TRANSPORT_WIFI
++                        ),
++                        networkCapabilities.hasTransport(
++                            NetworkCapabilities.TRANSPORT_VPN
++                        )
++                    )
++                    if (transportSignature == signature) return
++                    if (transportSignature != null) {
++                        connectionRevision.incrementAndGet()
++                    }
++                    transportSignature = signature
+                     trySend(Unit)
+                 }
+ 
+@@ -53,6 +85,17 @@ class AndroidWifiNetworkRepository(
+                     network: Network,
+                     linkProperties: LinkProperties
+                 ) {
++                    if (currentNetwork != network) return
++                    val signature = linkProperties.linkAddresses
++                        .filter { it.address is Inet4Address }
++                        .map { "${it.address.hostAddress}/${it.prefixLength}" }
++                        .sorted()
++
++                    if (ipv4Signature == signature) return
++                    if (ipv4Signature != null) {
++                        connectionRevision.incrementAndGet()
++                    }
++                    ipv4Signature = signature
+                     trySend(Unit)
+                 }
+             }
+@@ -79,6 +122,7 @@ class AndroidWifiNetworkRepository(
+ 
+     private fun readCurrentNetwork(): WifiNetworkResult {
+         return try {
++            val revision = connectionRevision.get()
+             val network = connectivityManager.activeNetwork
+                 ?: return unavailable(Reason.NO_NETWORK)
+ 
+@@ -131,13 +175,15 @@ class AndroidWifiNetworkRepository(
+                 return unavailable(Reason.UNSUPPORTED_SUBNET)
+             }
+ 
+-            if (connectivityManager.activeNetwork != network) {
++            if (connectivityManager.activeNetwork != network ||
++                connectionRevision.get() != revision
++            ) {
+                 return unavailable(Reason.NETWORK_CHANGED)
+             }
+ 
+             WifiNetworkResult.Available(
+                 scope = scope,
+-                connectionId = network.networkHandle.toString()
++                connectionId = "${network.networkHandle}:$revision"
+             )
+         } catch (_: SecurityException) {
+             unavailable(Reason.PERMISSION_DENIED)
+diff --git a/app/src/main/java/com/example/hogarscan/scan/presentation/ScanSetupController.kt b/app/src/main/java/com/example/hogarscan/scan/presentation/ScanSetupController.kt
+new file mode 100644
+index 0000000000000000000000000000000000000000..07718cc8257cd1fc0697e6b33b3e45d38332aa00
+--- /dev/null
++++ b/app/src/main/java/com/example/hogarscan/scan/presentation/ScanSetupController.kt
+@@ -0,0 +1,175 @@
++package com.example.hogarscan.scan.presentation
++
++import com.example.hogarscan.scan.domain.model.Ipv4Address
++import com.example.hogarscan.scan.domain.model.ScanAuthorization
++import com.example.hogarscan.scan.domain.model.ScanConfig
++import com.example.hogarscan.scan.domain.model.WifiNetworkResult
++import com.example.hogarscan.scan.domain.policy.ScanPolicy
++
++class ScanSetupController {
++
++    var state = ScanSetupState()
++        private set
++
++    private var network: WifiNetworkResult.Available? = null
++    private var confirmationConnectionId: String? = null
++    private var authorization: ScanAuthorization? = null
++
++    fun updateStartAddress(value: String) {
++        if (value == state.startAddress) return
++        state = state.copy(startAddress = value)
++        edited()
++    }
++
++    fun updateEndAddress(value: String) {
++        if (value == state.endAddress) return
++        state = state.copy(endAddress = value)
++        edited()
++    }
++
++    fun togglePort(port: Int) {
++        require(port in ScanPolicy.allowedPorts) {
++            "El puerto no pertenece a los permitidos."
++        }
++        val ports = if (port in state.selectedPorts) {
++            state.selectedPorts - port
++        } else {
++            state.selectedPorts + port
++        }
++        state = state.copy(selectedPorts = ports)
++        edited()
++    }
++
++    fun onNetworkChecking() {
++        state = state.copy(
++            checkingNetwork = true,
++            networkAvailable = false
++        )
++    }
++
++    fun onNetworkResult(result: WifiNetworkResult) {
++        val previous = network
++        if (result !is WifiNetworkResult.Available) {
++            network = null
++            invalidate(
++                if (authorization != null || state.confirmation != null) {
++                    "La conexión dejó de estar disponible. Vuelve a autorizar."
++                } else {
++                    state.notice
++                }
++            )
++            state = state.copy(
++                networkAvailable = false,
++                checkingNetwork = false
++            )
++            return
++        }
++
++        val changed = previous != null &&
++            (previous.connectionId != result.connectionId ||
++                previous.scope != result.scope)
++
++        val config = state.authorizedConfig
++        val authorizationInvalid = config != null &&
++            authorization?.validate(config, result) != true
++
++        if (changed || authorizationInvalid) {
++            invalidate("La conexión cambió. Revisa y autoriza de nuevo.")
++        }
++
++        network = result
++        state = state.copy(
++            networkAvailable = true,
++            checkingNetwork = false
++        )
++    }
++
++    fun reviewConfiguration() {
++        val currentNetwork = network
++        if (!state.networkAvailable || state.checkingNetwork ||
++            currentNetwork == null
++        ) {
++            state = state.copy(error = "Espera a tener una red Wi-Fi disponible.")
++            return
++        }
++
++        invalidate(null)
++        try {
++            val config = ScanConfig(
++                networkScope = currentNetwork.scope,
++                startAddress = Ipv4Address.parse(state.startAddress.trim()),
++                endAddress = Ipv4Address.parse(state.endAddress.trim()),
++                ports = state.selectedPorts
++            )
++            confirmationConnectionId = currentNetwork.connectionId
++            state = state.copy(
++                startAddress = config.startAddress.toString(),
++                endAddress = config.endAddress.toString(),
++                confirmation = config
++            )
++        } catch (exception: IllegalArgumentException) {
++            state = state.copy(
++                error = exception.message ?: "Revisa la configuración."
++            )
++        }
++    }
++
++    fun dismissConfirmation() {
++        confirmationConnectionId = null
++        state = state.copy(confirmation = null)
++    }
++
++    fun confirmAuthorization() {
++        val config = state.confirmation ?: return
++        val currentNetwork = network
++
++        if (!state.networkAvailable || state.checkingNetwork ||
++            currentNetwork == null ||
++            currentNetwork.connectionId != confirmationConnectionId ||
++            currentNetwork.scope != config.networkScope
++        ) {
++            invalidate("La conexión cambió. Revisa y autoriza de nuevo.")
++            return
++        }
++
++        try {
++            authorization = ScanAuthorization.confirm(config, currentNetwork)
++            confirmationConnectionId = null
++            state = state.copy(
++                confirmation = null,
++                authorizedConfig = config,
++                error = null,
++                notice = null
++            )
++        } catch (exception: IllegalArgumentException) {
++            invalidate(null)
++            state = state.copy(error = exception.message)
++        }
++    }
++
++    fun revokeAuthorization() {
++        invalidate("Autorización revocada.")
++    }
++
++    private fun edited() {
++        invalidate(
++            if (authorization != null) {
++                "La configuración cambió. Vuelve a autorizar."
++            } else {
++                null
++            }
++        )
++    }
++
++    private fun invalidate(notice: String?) {
++        authorization?.revoke()
++        authorization = null
++        confirmationConnectionId = null
++        state = state.copy(
++            confirmation = null,
++            authorizedConfig = null,
++            error = null,
++            notice = notice
++        )
++    }
++}
+diff --git a/app/src/main/java/com/example/hogarscan/scan/presentation/ScanSetupForm.kt b/app/src/main/java/com/example/hogarscan/scan/presentation/ScanSetupForm.kt
+new file mode 100644
+index 0000000000000000000000000000000000000000..a822f6f35bf9d1943b5304da6fe8287e5387a966
+--- /dev/null
++++ b/app/src/main/java/com/example/hogarscan/scan/presentation/ScanSetupForm.kt
+@@ -0,0 +1,176 @@
++package com.example.hogarscan.scan.presentation
++
++import androidx.compose.foundation.layout.Arrangement
++import androidx.compose.foundation.layout.Column
++import androidx.compose.foundation.layout.Row
++import androidx.compose.foundation.layout.fillMaxWidth
++import androidx.compose.foundation.layout.heightIn
++import androidx.compose.foundation.layout.padding
++import androidx.compose.foundation.rememberScrollState
++import androidx.compose.foundation.selection.toggleable
++import androidx.compose.foundation.text.KeyboardOptions
++import androidx.compose.foundation.verticalScroll
++import androidx.compose.material3.AlertDialog
++import androidx.compose.material3.Button
++import androidx.compose.material3.Checkbox
++import androidx.compose.material3.MaterialTheme
++import androidx.compose.material3.OutlinedButton
++import androidx.compose.material3.OutlinedTextField
++import androidx.compose.material3.Text
++import androidx.compose.material3.TextButton
++import androidx.compose.runtime.Composable
++import androidx.compose.ui.Alignment
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.semantics.Role
++import androidx.compose.ui.text.input.KeyboardType
++import androidx.compose.ui.unit.dp
++import com.example.hogarscan.scan.domain.policy.ScanPolicy
++
++@Composable
++fun ScanSetupForm(
++    state: ScanSetupState,
++    onStartChange: (String) -> Unit,
++    onEndChange: (String) -> Unit,
++    onPortToggle: (Int) -> Unit,
++    onReview: () -> Unit,
++    onDismiss: () -> Unit,
++    onConfirm: () -> Unit,
++    onRevoke: () -> Unit,
++    modifier: Modifier = Modifier
++) {
++    val enabled = state.networkAvailable && !state.checkingNetwork
++
++    Column(
++        modifier = modifier.fillMaxWidth(),
++        verticalArrangement = Arrangement.spacedBy(12.dp)
++    ) {
++        Text(
++            text = "Configurar revisión",
++            style = MaterialTheme.typography.titleLarge
++        )
++        Text(
++            "Elige hasta 254 direcciones de la subred y los puertos a revisar. " +
++                "La dirección del teléfono se excluirá de los intentos."
++        )
++
++        OutlinedTextField(
++            value = state.startAddress,
++            onValueChange = onStartChange,
++            label = { Text("IPv4 inicial") },
++            singleLine = true,
++            enabled = enabled,
++            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
++            modifier = Modifier.fillMaxWidth()
++        )
++        OutlinedTextField(
++            value = state.endAddress,
++            onValueChange = onEndChange,
++            label = { Text("IPv4 final") },
++            singleLine = true,
++            enabled = enabled,
++            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
++            modifier = Modifier.fillMaxWidth()
++        )
++
++        Text("Puertos")
++        ScanPolicy.allowedPorts.sorted().forEach { port ->
++            Row(
++                modifier = Modifier
++                    .fillMaxWidth()
++                    .toggleable(
++                        value = port in state.selectedPorts,
++                        enabled = enabled,
++                        role = Role.Checkbox,
++                        onValueChange = { onPortToggle(port) }
++                    )
++                    .padding(vertical = 4.dp),
++                verticalAlignment = Alignment.CenterVertically
++            ) {
++                Checkbox(
++                    checked = port in state.selectedPorts,
++                    onCheckedChange = null,
++                    enabled = enabled
++                )
++                Text(
++                    text = "Puerto $port",
++                    modifier = Modifier.padding(start = 12.dp)
++                )
++            }
++        }
++
++        state.error?.let {
++            Text(it, color = MaterialTheme.colorScheme.error)
++        }
++        state.notice?.let {
++            Text(it, style = MaterialTheme.typography.bodyMedium)
++        }
++
++        when {
++            state.checkingNetwork -> Text("Comprobando la conexión…")
++
++            !state.networkAvailable ->
++                Text("Conecta el teléfono a una red Wi-Fi para configurar.")
++
++            state.authorizedConfig != null -> {
++                val config = state.authorizedConfig
++                Text(
++                    text = "Configuración autorizada",
++                    style = MaterialTheme.typography.titleMedium
++                )
++                Text(
++                    "${config.targetAddresses.size} direcciones objetivo · " +
++                        "${config.plannedProbeCount} intentos TCP"
++                )
++                OutlinedButton(onClick = onRevoke) {
++                    Text("Revocar autorización")
++                }
++            }
++
++            else -> Button(onClick = onReview) {
++                Text("Revisar configuración")
++            }
++        }
++    }
++
++    val config = state.confirmation
++    if (config != null && enabled) {
++        AlertDialog(
++            onDismissRequest = onDismiss,
++            title = { Text("Autorizar configuración") },
++            text = {
++                Column(
++                    modifier = Modifier
++                        .heightIn(max = 360.dp)
++                        .verticalScroll(rememberScrollState()),
++                    verticalArrangement = Arrangement.spacedBy(8.dp)
++                ) {
++                    Text(
++                        "Subred: ${config.networkScope.networkAddress}" +
++                            "/${config.networkScope.prefixLength}"
++                    )
++                    Text("Rango: ${config.startAddress} – ${config.endAddress}")
++                    Text("Puertos: ${config.ports.joinToString()}")
++                    Text(
++                        "Direcciones objetivo: ${config.targetAddresses.size} " +
++                            "(excluye el teléfono)"
++                    )
++                    Text("Intentos TCP previstos: ${config.plannedProbeCount}")
++                    Text(
++                        "Confirmo que tengo autorización para revisar " +
++                            "esta red con el alcance indicado."
++                    )
++                }
++            },
++            confirmButton = {
++                TextButton(onClick = onConfirm) {
++                    Text("Autorizar")
++                }
++            },
++            dismissButton = {
++                TextButton(onClick = onDismiss) {
++                    Text("Cancelar")
++                }
++            }
++        )
++    }
++}
+diff --git a/app/src/main/java/com/example/hogarscan/scan/presentation/ScanSetupState.kt b/app/src/main/java/com/example/hogarscan/scan/presentation/ScanSetupState.kt
+new file mode 100644
+index 0000000000000000000000000000000000000000..c06de6708d713fc46f1aec7f79ba194d5472da67
+--- /dev/null
++++ b/app/src/main/java/com/example/hogarscan/scan/presentation/ScanSetupState.kt
+@@ -0,0 +1,15 @@
++package com.example.hogarscan.scan.presentation
++
++import com.example.hogarscan.scan.domain.model.ScanConfig
++
++data class ScanSetupState(
++    val startAddress: String = "",
++    val endAddress: String = "",
++    val selectedPorts: Set<Int> = emptySet(),
++    val networkAvailable: Boolean = false,
++    val checkingNetwork: Boolean = false,
++    val confirmation: ScanConfig? = null,
++    val authorizedConfig: ScanConfig? = null,
++    val error: String? = null,
++    val notice: String? = null
++)
+diff --git a/app/src/main/java/com/example/hogarscan/scan/presentation/WifiScreen.kt b/app/src/main/java/com/example/hogarscan/scan/presentation/WifiScreen.kt
+index 376233dcecbda39b37f9998c723b1e579f623821..cd39e8e6c450bf82f6cf730da8bca6523f11bd84 100644
+--- a/app/src/main/java/com/example/hogarscan/scan/presentation/WifiScreen.kt
++++ b/app/src/main/java/com/example/hogarscan/scan/presentation/WifiScreen.kt
+@@ -3,6 +3,7 @@ package com.example.hogarscan.scan.presentation
+ import androidx.compose.foundation.layout.Arrangement
+ import androidx.compose.foundation.layout.Column
+ import androidx.compose.foundation.layout.fillMaxSize
++import androidx.compose.foundation.layout.imePadding
+ import androidx.compose.foundation.layout.padding
+ import androidx.compose.foundation.rememberScrollState
+ import androidx.compose.foundation.verticalScroll
+@@ -24,11 +25,25 @@ fun WifiRoute(
+     modifier: Modifier = Modifier
+ ) {
+     val state by viewModel.uiState.collectAsStateWithLifecycle()
++    val setupState by viewModel.setupState.collectAsStateWithLifecycle()
+ 
+ 
+     WifiScreen(
+         state = state,
+         onRefresh = viewModel::refresh,
++        formContent = {
++            ScanSetupForm(
++                state = setupState,
++                onStartChange = viewModel::updateStartAddress,
++                onEndChange = viewModel::updateEndAddress,
++                onPortToggle = viewModel::togglePort,
++                onReview = viewModel::reviewConfiguration,
++                onDismiss = viewModel::dismissConfirmation,
++                onConfirm = viewModel::confirmAuthorization,
++                onRevoke = viewModel::revokeAuthorization,
++                modifier = Modifier.padding(top = 24.dp)
++            )
++        },
+         modifier = modifier
+     )
+ }
+@@ -37,11 +52,13 @@ fun WifiRoute(
+ private fun WifiScreen(
+     state: WifiUiState,
+     onRefresh: () -> Unit,
++    formContent: @Composable () -> Unit,
+     modifier: Modifier = Modifier
+ ) {
+     Column(
+         modifier = modifier
+             .fillMaxSize()
++            .imePadding()
+             .verticalScroll(rememberScrollState())
+             .padding(24.dp),
+         verticalArrangement = Arrangement.spacedBy(12.dp)
+@@ -110,6 +127,8 @@ private fun WifiScreen(
+         ) {
+             Text("Actualizar")
+         }
++
++        formContent()
+     }
+ }
+ 
+diff --git a/app/src/main/java/com/example/hogarscan/scan/presentation/WifiViewModel.kt b/app/src/main/java/com/example/hogarscan/scan/presentation/WifiViewModel.kt
+index 2c60c6719c50e8b57dee7136d4976ce02a8512e0..412fc835f2f1abce498e428937880bddaff1a400 100644
+--- a/app/src/main/java/com/example/hogarscan/scan/presentation/WifiViewModel.kt
++++ b/app/src/main/java/com/example/hogarscan/scan/presentation/WifiViewModel.kt
+@@ -2,6 +2,7 @@ package com.example.hogarscan.scan.presentation
+ 
+ import androidx.lifecycle.ViewModel
+ import androidx.lifecycle.viewModelScope
++import com.example.hogarscan.scan.domain.model.WifiNetworkResult
+ import com.example.hogarscan.scan.domain.repository.WifiNetworkRepository
+ import kotlinx.coroutines.CancellationException
+ import kotlinx.coroutines.Job
+@@ -19,9 +20,12 @@ class WifiViewModel(
+ 
+     private val _uiState =
+         MutableStateFlow<WifiUiState>(WifiUiState.Idle)
+-
+     val uiState: StateFlow<WifiUiState> = _uiState.asStateFlow()
+ 
++    private val setup = ScanSetupController()
++    private val _setupState = MutableStateFlow(setup.state)
++    val setupState: StateFlow<ScanSetupState> = _setupState.asStateFlow()
++
+     private var observationJob: Job? = null
+     private var queryJob: Job? = null
+ 
+@@ -29,20 +33,53 @@ class WifiViewModel(
+         startObserving()
+     }
+ 
+-    fun refresh() {
+-        startObserving()
++    fun updateStartAddress(value: String) {
++        setup.updateStartAddress(value)
++        publishSetup()
++    }
+ 
+-        if (_uiState.value == WifiUiState.Loading) {
+-            return
+-        }
++    fun updateEndAddress(value: String) {
++        setup.updateEndAddress(value)
++        publishSetup()
++    }
+ 
++    fun togglePort(port: Int) {
++        setup.togglePort(port)
++        publishSetup()
++    }
++
++    fun reviewConfiguration() {
++        setup.reviewConfiguration()
++        publishSetup()
++    }
++
++    fun dismissConfirmation() {
++        setup.dismissConfirmation()
++        publishSetup()
++    }
++
++    fun confirmAuthorization() {
++        if (setup.state.confirmation == null ||
++            setup.state.checkingNetwork
++        ) return
++
++        // Se comprueba de nuevo la red antes de aceptar la confirmación.
++        reload(confirmAfterRead = true)
++    }
++
++    fun revokeAuthorization() {
++        setup.revokeAuthorization()
++        publishSetup()
++    }
++
++    fun refresh() {
++        startObserving()
++        if (_uiState.value == WifiUiState.Loading) return
+         reload()
+     }
+ 
+     private fun startObserving() {
+-        if (observationJob?.isActive == true) {
+-            return
+-        }
++        if (observationJob?.isActive == true) return
+ 
+         observationJob = viewModelScope.launch {
+             try {
+@@ -54,20 +91,26 @@ class WifiViewModel(
+             } catch (_: Exception) {
+                 currentCoroutineContext().ensureActive()
+                 queryJob?.cancel()
++                setup.onNetworkResult(
++                    WifiNetworkResult.Unavailable(
++                        WifiNetworkResult.Reason.NETWORK_INFO_UNAVAILABLE
++                    )
++                )
++                publishSetup()
+                 _uiState.value = WifiUiState.Error
+             }
+         }
+     }
+ 
+-    private fun reload() {
++    private fun reload(confirmAfterRead: Boolean = false) {
+         queryJob?.cancel()
++        setup.onNetworkChecking()
++        publishSetup()
+         _uiState.value = WifiUiState.Loading
+ 
+         queryJob = viewModelScope.launch {
+             val nextState: WifiUiState = try {
+-                WifiUiState.Loaded(
+-                    repository.getCurrentNetwork()
+-                )
++                WifiUiState.Loaded(repository.getCurrentNetwork())
+             } catch (exception: CancellationException) {
+                 throw exception
+             } catch (_: Exception) {
+@@ -75,7 +118,22 @@ class WifiViewModel(
+             }
+ 
+             currentCoroutineContext().ensureActive()
++            val result = (nextState as? WifiUiState.Loaded)?.result
++                ?: WifiNetworkResult.Unavailable(
++                    WifiNetworkResult.Reason.NETWORK_INFO_UNAVAILABLE
++                )
++            setup.onNetworkResult(result)
++
++            if (confirmAfterRead) {
++                setup.confirmAuthorization()
++            }
++
++            publishSetup()
+             _uiState.value = nextState
+         }
+     }
++
++    private fun publishSetup() {
++        _setupState.value = setup.state
++    }
+ }
+diff --git a/app/src/test/java/com/example/hogarscan/scan/presentation/ScanSetupControllerTest.kt b/app/src/test/java/com/example/hogarscan/scan/presentation/ScanSetupControllerTest.kt
+new file mode 100644
+index 0000000000000000000000000000000000000000..69371955ec1197f1a147d990d34616d267d0b69a
+--- /dev/null
++++ b/app/src/test/java/com/example/hogarscan/scan/presentation/ScanSetupControllerTest.kt
+@@ -0,0 +1,249 @@
++package com.example.hogarscan.scan.presentation
++
++import com.example.hogarscan.scan.domain.model.Ipv4Address
++import com.example.hogarscan.scan.domain.model.NetworkScope
++import com.example.hogarscan.scan.domain.model.WifiNetworkResult
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertNotNull
++import org.junit.Assert.assertNull
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class ScanSetupControllerTest {
++
++    private fun wifi(
++        address: String = "192.168.28.43",
++        prefix: Int = 24,
++        id: String = "wifi-1:1"
++    ) = WifiNetworkResult.Available(
++        scope = NetworkScope(Ipv4Address.parse(address), prefix),
++        connectionId = id
++    )
++
++    private fun ready() = ScanSetupController().apply {
++        onNetworkResult(wifi())
++        updateStartAddress("192.168.28.40")
++        updateEndAddress("192.168.28.45")
++        togglePort(80)
++        togglePort(443)
++    }
++
++    private fun authorized() = ready().apply {
++        reviewConfiguration()
++        confirmAuthorization()
++        assertNotNull(state.authorizedConfig)
++    }
++
++    @Test
++    fun `impide revisar sin red disponible`() {
++        val controller = ScanSetupController()
++
++        controller.reviewConfiguration()
++        controller.confirmAuthorization()
++
++        assertNotNull(controller.state.error)
++        assertNull(controller.state.confirmation)
++        assertNull(controller.state.authorizedConfig)
++    }
++
++    @Test
++    fun `un error de rango se presenta sin abrir la confirmacion`() {
++        val controller = ready()
++        controller.updateStartAddress("192.168.29.1")
++
++        controller.reviewConfiguration()
++
++        assertNotNull(controller.state.error)
++        assertNull(controller.state.confirmation)
++        assertNull(controller.state.authorizedConfig)
++    }
++
++    @Test
++    fun `una IPv4 mal escrita produce un error de formulario`() {
++        val controller = ready()
++        controller.updateStartAddress("192.168..40")
++
++        controller.reviewConfiguration()
++
++        assertNotNull(controller.state.error)
++        assertNull(controller.state.confirmation)
++    }
++
++    @Test
++    fun `exige seleccionar puertos`() {
++        val controller = ready()
++        controller.togglePort(80)
++        controller.togglePort(443)
++
++        controller.reviewConfiguration()
++
++        assertNotNull(controller.state.error)
++        assertNull(controller.state.confirmation)
++    }
++
++    @Test
++    fun `la vista previa excluye al telefono y calcula los intentos`() {
++        val controller = ready()
++
++        controller.reviewConfiguration()
++
++        val config = requireNotNull(controller.state.confirmation)
++        assertEquals(5, config.targetAddresses.size)
++        assertEquals(10, config.plannedProbeCount)
++        assertEquals(listOf(80, 443), config.ports)
++        assertFalse(config.targetAddresses.contains(wifi().scope.localAddress))
++        assertNull(controller.state.authorizedConfig)
++    }
++
++    @Test
++    fun `cancelar el dialogo no autoriza`() {
++        val controller = ready()
++        controller.reviewConfiguration()
++
++        controller.dismissConfirmation()
++        controller.confirmAuthorization()
++
++        assertNull(controller.state.confirmation)
++        assertNull(controller.state.authorizedConfig)
++    }
++
++    @Test
++    fun `no autoriza sin una configuracion revisada`() {
++        val controller = ready()
++
++        controller.confirmAuthorization()
++
++        assertNull(controller.state.authorizedConfig)
++    }
++
++    @Test
++    fun `la confirmacion explicita autoriza la configuracion revisada`() {
++        val controller = ready()
++        controller.reviewConfiguration()
++        val reviewed = controller.state.confirmation
++
++        controller.confirmAuthorization()
++
++        assertEquals(reviewed, controller.state.authorizedConfig)
++        assertNull(controller.state.confirmation)
++        assertNull(controller.state.error)
++    }
++
++    @Test
++    fun `verificar la misma conexion conserva la autorizacion`() {
++        val controller = authorized()
++        val config = controller.state.authorizedConfig
++
++        controller.onNetworkChecking()
++
++        assertTrue(controller.state.checkingNetwork)
++        assertFalse(controller.state.networkAvailable)
++
++        controller.onNetworkResult(wifi())
++
++        assertFalse(controller.state.checkingNetwork)
++        assertTrue(controller.state.networkAvailable)
++        assertEquals(config, controller.state.authorizedConfig)
++    }
++
++    @Test
++    fun `editar extremos o puertos revoca aunque luego se restauren`() {
++        val edits: List<(ScanSetupController) -> Unit> = listOf(
++            {
++                it.updateStartAddress("192.168.28.41")
++                it.updateStartAddress("192.168.28.40")
++            },
++            {
++                it.updateEndAddress("192.168.28.46")
++                it.updateEndAddress("192.168.28.45")
++            },
++            {
++                it.togglePort(80)
++                it.togglePort(80)
++            }
++        )
++
++        edits.forEach { edit ->
++            val controller = authorized()
++            edit(controller)
++
++            assertNull(controller.state.authorizedConfig)
++            assertNull(controller.state.confirmation)
++        }
++    }
++
++    @Test
++    fun `perder y recuperar la conexion no restaura la autorizacion`() {
++        val controller = authorized()
++
++        controller.onNetworkResult(
++            WifiNetworkResult.Unavailable(WifiNetworkResult.Reason.NO_NETWORK)
++        )
++        controller.onNetworkResult(wifi())
++
++        assertTrue(controller.state.networkAvailable)
++        assertNull(controller.state.authorizedConfig)
++    }
++
++    @Test
++    fun `otra conexion o revision invalida aunque conserve la subred`() {
++        listOf("wifi-2:1", "wifi-1:2").forEach { id ->
++            val controller = authorized()
++
++            controller.onNetworkResult(wifi(id = id))
++
++            assertNull(controller.state.authorizedConfig)
++        }
++    }
++
++    @Test
++    fun `cambiar IPv4 o prefijo invalida la autorizacion`() {
++        listOf(
++            wifi(address = "192.168.28.44"),
++            wifi(prefix = 23)
++        ).forEach { network ->
++            val controller = authorized()
++
++            controller.onNetworkResult(network)
++
++            assertNull(controller.state.authorizedConfig)
++        }
++    }
++
++    @Test
++    fun `cambiar la conexion mientras se confirma descarta el dialogo`() {
++        val controller = ready()
++        controller.reviewConfiguration()
++
++        controller.onNetworkChecking()
++        controller.onNetworkResult(wifi(id = "wifi-2:1"))
++        controller.confirmAuthorization()
++
++        assertNull(controller.state.confirmation)
++        assertNull(controller.state.authorizedConfig)
++    }
++
++    @Test
++    fun `no permite confirmar mientras se comprueba la conexion`() {
++        val controller = ready()
++        controller.reviewConfiguration()
++        controller.onNetworkChecking()
++
++        controller.confirmAuthorization()
++
++        assertNull(controller.state.authorizedConfig)
++    }
++
++    @Test
++    fun `se puede revocar y autorizar nuevamente de forma explicita`() {
++        val controller = authorized()
++
++        controller.revokeAuthorization()
++        assertNull(controller.state.authorizedConfig)
++
++        controller.reviewConfiguration()
++        controller.confirmAuthorization()
++        assertNotNull(controller.state.authorizedConfig)
++    }
++}
+diff --git a/app/src/test/java/com/example/hogarscan/scan/presentation/ScanSetupViewModelTest.kt b/app/src/test/java/com/example/hogarscan/scan/presentation/ScanSetupViewModelTest.kt
+new file mode 100644
+index 0000000000000000000000000000000000000000..1d12ada70db4b5f1c693058d5883d9c10328c0a3
+--- /dev/null
++++ b/app/src/test/java/com/example/hogarscan/scan/presentation/ScanSetupViewModelTest.kt
+@@ -0,0 +1,174 @@
++package com.example.hogarscan.scan.presentation
++
++import androidx.lifecycle.ViewModelProvider
++import androidx.lifecycle.ViewModelStore
++import androidx.lifecycle.viewmodel.initializer
++import androidx.lifecycle.viewmodel.viewModelFactory
++import com.example.hogarscan.scan.domain.model.Ipv4Address
++import com.example.hogarscan.scan.domain.model.NetworkScope
++import com.example.hogarscan.scan.domain.model.WifiNetworkResult
++import com.example.hogarscan.scan.domain.repository.WifiNetworkRepository
++import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.ExperimentalCoroutinesApi
++import kotlinx.coroutines.delay
++import kotlinx.coroutines.flow.Flow
++import kotlinx.coroutines.flow.MutableSharedFlow
++import kotlinx.coroutines.test.StandardTestDispatcher
++import kotlinx.coroutines.test.advanceUntilIdle
++import kotlinx.coroutines.test.runCurrent
++import kotlinx.coroutines.test.runTest
++import kotlinx.coroutines.test.resetMain
++import kotlinx.coroutines.test.setMain
++import org.junit.After
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertNotNull
++import org.junit.Assert.assertNull
++import org.junit.Before
++import org.junit.Test
++
++@OptIn(ExperimentalCoroutinesApi::class)
++class ScanSetupViewModelTest {
++
++    private class FakeRepository : WifiNetworkRepository {
++        val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
++        var calls = 0
++        var failure: Exception? = null
++        var response: WifiNetworkResult = WifiNetworkResult.Available(
++            scope = NetworkScope(Ipv4Address.parse("192.168.28.43"), 24),
++            connectionId = "wifi-1:1"
++        )
++
++        override fun observeNetworkChanges(): Flow<Unit> = changes
++
++        override suspend fun getCurrentNetwork(): WifiNetworkResult {
++            calls++
++            val capturedResponse = response
++            val capturedFailure = failure
++            delay(100)
++            capturedFailure?.let { throw it }
++            return capturedResponse
++        }
++    }
++
++    private val store = ViewModelStore()
++
++    private fun viewModel(repository: FakeRepository): WifiViewModel =
++        ViewModelProvider(
++            store,
++            viewModelFactory {
++                initializer { WifiViewModel(repository) }
++            }
++        )[WifiViewModel::class.java]
++
++    private fun review(viewModel: WifiViewModel) {
++        viewModel.updateStartAddress("192.168.28.40")
++        viewModel.updateEndAddress("192.168.28.45")
++        viewModel.togglePort(80)
++        viewModel.togglePort(443)
++        viewModel.reviewConfiguration()
++    }
++
++    @Before
++    fun setUp() {
++        Dispatchers.setMain(StandardTestDispatcher())
++    }
++
++    @After
++    fun tearDown() {
++        store.clear()
++        Dispatchers.resetMain()
++    }
++
++    @Test
++    fun `confirmar vuelve a consultar la red antes de autorizar`() = runTest {
++        val repository = FakeRepository()
++        val viewModel = viewModel(repository)
++        viewModel.refresh()
++        advanceUntilIdle()
++        review(viewModel)
++
++        viewModel.confirmAuthorization()
++
++        assertNull(viewModel.setupState.value.authorizedConfig)
++        advanceUntilIdle()
++
++        assertEquals(2, repository.calls)
++        assertNotNull(viewModel.setupState.value.authorizedConfig)
++    }
++
++    @Test
++    fun `rechaza confirmar si la red cambio sin recibir aun el aviso`() = runTest {
++        val repository = FakeRepository()
++        val viewModel = viewModel(repository)
++        viewModel.refresh()
++        advanceUntilIdle()
++        review(viewModel)
++        repository.response =
++            (repository.response as WifiNetworkResult.Available).copy(
++                connectionId = "wifi-2:1"
++            )
++
++        viewModel.confirmAuthorization()
++        advanceUntilIdle()
++
++        assertNull(viewModel.setupState.value.confirmation)
++        assertNull(viewModel.setupState.value.authorizedConfig)
++    }
++
++    @Test
++    fun `editar durante la consulta de confirmacion no autoriza el borrador anterior`() =
++        runTest {
++            val repository = FakeRepository()
++            val viewModel = viewModel(repository)
++            viewModel.refresh()
++            advanceUntilIdle()
++            review(viewModel)
++
++            viewModel.confirmAuthorization()
++            runCurrent()
++            viewModel.updateEndAddress("192.168.28.46")
++            advanceUntilIdle()
++
++            assertNull(viewModel.setupState.value.authorizedConfig)
++        }
++
++    @Test
++    fun `un aviso de cambio cancela una confirmacion en curso`() = runTest {
++        val repository = FakeRepository()
++        val viewModel = viewModel(repository)
++        viewModel.refresh()
++        advanceUntilIdle()
++        review(viewModel)
++
++        viewModel.confirmAuthorization()
++        runCurrent()
++        repository.response =
++            (repository.response as WifiNetworkResult.Available).copy(
++                connectionId = "wifi-1:3"
++            )
++        repository.changes.emit(Unit)
++        advanceUntilIdle()
++
++        assertNull(viewModel.setupState.value.confirmation)
++        assertNull(viewModel.setupState.value.authorizedConfig)
++    }
++
++    @Test
++    fun `un error al volver a consultar retira la autorizacion`() = runTest {
++        val repository = FakeRepository()
++        val viewModel = viewModel(repository)
++        viewModel.refresh()
++        advanceUntilIdle()
++        review(viewModel)
++        viewModel.confirmAuthorization()
++        advanceUntilIdle()
++        assertNotNull(viewModel.setupState.value.authorizedConfig)
++
++        repository.failure = IllegalStateException("Fallo simulado")
++        viewModel.refresh()
++        advanceUntilIdle()
++
++        assertEquals(WifiUiState.Error, viewModel.uiState.value)
++        assertNull(viewModel.setupState.value.authorizedConfig)
++    }
++}
