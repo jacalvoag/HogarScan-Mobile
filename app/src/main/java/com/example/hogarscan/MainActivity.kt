@@ -23,6 +23,10 @@ import com.example.hogarscan.scan.presentation.ScanHistoryViewModel
 import com.example.hogarscan.scan.presentation.WifiRoute
 import com.example.hogarscan.scan.presentation.WifiViewModel
 import com.example.hogarscan.ui.theme.HogarScanTheme
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.ui.res.stringResource
+import com.example.hogarscan.auth.presentation.AuthRoute
+import com.example.hogarscan.auth.presentation.AuthViewModel
 
 class MainActivity : ComponentActivity() {
 
@@ -36,6 +40,10 @@ class MainActivity : ComponentActivity() {
         setContent {
             val wifiViewModel: WifiViewModel = viewModel(
                 factory = container.wifiViewModelFactory
+            )
+
+            val authViewModel: AuthViewModel = viewModel(
+                factory = container.authViewModelFactory
             )
 
             var selectedTab by rememberSaveable { mutableStateOf(0) }
@@ -58,22 +66,41 @@ class MainActivity : ComponentActivity() {
                                 onClick = { selectedTab = 1 },
                                 text = { Text("Historial") }
                             )
+                            Tab(
+                                selected = selectedTab == 2,
+                                onClick = { selectedTab = 2 },
+                                text = { Text(stringResource(R.string.auth_account)) }
+                            )
                         }
                     }
                 ) { innerPadding ->
-                    if (selectedTab == 0) {
-                        WifiRoute(
-                            viewModel = wifiViewModel,
-                            modifier = Modifier.padding(innerPadding)
-                        )
-                    } else {
-                        val historyViewModel: ScanHistoryViewModel = viewModel(
-                            factory = container.scanHistoryViewModelFactory
-                        )
-                        ScanHistoryRoute(
-                            viewModel = historyViewModel,
-                            modifier = Modifier.padding(innerPadding)
-                        )
+                    when (selectedTab) {
+                        0 -> {
+                            WifiRoute(
+                                viewModel = wifiViewModel,
+                                modifier = Modifier.padding(innerPadding)
+                            )
+                        }
+
+                        1 -> {
+                            val historyViewModel: ScanHistoryViewModel = viewModel(
+                                factory = container.scanHistoryViewModelFactory
+                            )
+
+                            ScanHistoryRoute(
+                                viewModel = historyViewModel,
+                                modifier = Modifier.padding(innerPadding)
+                            )
+                        }
+
+                        2 -> {
+                            AuthRoute(
+                                viewModel = authViewModel,
+                                modifier = Modifier
+                                    .padding(innerPadding)
+                                    .consumeWindowInsets(innerPadding)
+                            )
+                        }
                     }
                 }
             }
