@@ -27,6 +27,10 @@ import com.example.hogarscan.shared.data.http.ApiEndpoint
 import com.example.hogarscan.shared.data.http.ApiTransport
 import com.example.hogarscan.shared.data.http.OkHttpApiTransport
 import com.example.hogarscan.shared.data.http.createApiHttpClient
+import com.example.hogarscan.auth.data.http.HttpAuthDataSource
+import com.example.hogarscan.auth.data.repository.DefaultAuthRepository
+import com.example.hogarscan.auth.domain.repository.AuthRepository
+import com.example.hogarscan.auth.presentation.AuthViewModel
 
 
 class AppContainer(context: Context) {
@@ -36,6 +40,23 @@ class AppContainer(context: Context) {
     private val sessionStorage by lazy {
         AndroidSessionStorage(appContext)
     }
+
+    val authRepository: AuthRepository by lazy {
+        DefaultAuthRepository(
+            remote = HttpAuthDataSource(apiTransport),
+            sessions = sessionStore
+        )
+    }
+
+    val authViewModelFactory: ViewModelProvider.Factory =
+        viewModelFactory {
+            initializer {
+                AuthViewModel(
+                    repository = authRepository,
+                    sessions = sessionReader
+                )
+            }
+        }
 
     val sessionStore by lazy {
         PersistentSessionStore(sessionStorage)
