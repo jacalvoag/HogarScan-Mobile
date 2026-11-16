@@ -39,6 +39,7 @@ sealed interface ApiResult {
     data object InvalidResponse : ApiResult
     data object SessionUnavailable : ApiResult
     data object SessionChanged : ApiResult
+    data object SessionStorageFailure : ApiResult
 }
 
 fun interface ApiTransport {

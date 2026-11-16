@@ -110,13 +110,112 @@ e invalidación del contexto.
 Estas comprobaciones no sustituyen las validaciones del propietario
 en persistencia ni revierten operaciones ejecutadas por el servidor.
 
+## Registro de sesión activa
+
+SessionRegistry mantiene en memoria el estado público y la credencial.
+Las operaciones sobre credenciales se coordinan mediante un Mutex.
+
+Cada activación crea un contexto local nuevo, incluso para la misma cuenta.
+La invalidación exige coincidencia de cuenta y contexto.
+
+completeRestoration solo aplica mientras el estado sea Restoring.
+Devuelve true si aplicó el resultado, que puede ser Authenticated o Guest.
+Una restauración tardía no reemplaza una sesión más reciente.
+
+Las credenciales ausentes o vencidas completan la restauración como Guest.
+tokenFor comprueba el vencimiento, pero no modifica por sí mismo el estado.
+
+La generación puede actualizarse conservando contexto y token.
+Las respuestas con una generación inferior a la actual se rechazan.
+Los snapshots previamente capturados permanecen sin cambios.
+
+Este registro mantiene la sesión durante la ejecución del proceso.
+La persistencia protegida y su coordinación se incorporarán por separado.
+La invalidación en memoria todavía no representa un logout remoto.
+
 ## Integración pendiente
 
-Quedan pendientes el almacenamiento real de credenciales, los flujos
-de autenticación y la composición en AppContainer.
+PersistentSessionStore coordina SessionRegistry y SessionStorage.
+AppContainer proporciona las instancias compartidas de sesión y HTTP.
+Quedan pendientes los flujos de autenticación y su presentación.
 
-Las funcionalidades pueden desarrollarse con implementaciones
-de prueba de SessionApiClient y SessionReader.
+## Persistencia protegida de sesión
+
+AndroidSessionStorage guarda las credenciales cifradas con AES-GCM.
+La clave se genera y utiliza mediante Android Keystore.
+
+El registro usa el formato interno HSC1 y se guarda dentro de
+noBackupFilesDir, excluido de las operaciones de respaldo.
+contextId no se persiste: se genera al activar la sesión en memoria.
+
+Las operaciones utilizan Dispatchers.IO, un Mutex y AtomicFile.
+La aplicación debe compartir una instancia del almacenamiento.
+
+La lectura devuelve null cuando no existe un archivo.
+Un archivo alterado, una clave ausente o un fallo de almacenamiento
+produce SessionStorageException. Leer no genera una clave nueva.
+
+clear elimina el archivo y la clave del almacenamiento.
+Esta operación local no sustituye la revocación remota de la sesión.
+
+## Coordinación de sesión persistente
+
+PersistentSessionStore es el punto de acceso para activar, restaurar,
+invalidar y actualizar la generación de la sesión.
+
+Las funcionalidades no deben modificar directamente SessionRegistry
+ni AndroidSessionStorage.
+
+La activación guarda las credenciales antes de publicar la sesión.
+Devuelve null si las credenciales vencieron antes de completarse.
+
+La restauración se aplica una vez. Elimina credenciales vencidas
+y genera un contexto local nuevo para una sesión recuperada.
+
+La invalidación comprueba cuenta y contexto antes de borrar.
+Una operación anterior no puede borrar una sesión más reciente.
+
+Un fallo de almacenamiento deja la memoria como Guest, se notifica
+y exige limpiar el almacenamiento antes de activar otra sesión.
+Si falla el borrado, no se da por confirmada la eliminación persistente.
+
+Las confirmaciones locales protegen disco y memoria frente a cancelación.
+La cancelación vuelve a comprobarse antes de retornar al consumidor.
+No se incluyen solicitudes HTTP dentro de esa sección protegida.
+
+SessionStorageFailure representa un fallo local de credenciales.
+Debe manejarse al convertir ApiResult en resultados de cada funcionalidad.
+
+AppContainer expone sessionReader para observar el estado,
+sessionApiClient para solicitudes autenticadas y apiTransport
+para los adaptadores de datos que consumen rutas públicas.
+
+El inicio de la restauración se conectará al flujo de autenticación.
+
+## Adaptador HTTP de autenticación
+
+HttpAuthDataSource consume POST /auth/register y POST /auth/login
+mediante el transporte compartido y sin incorporar una sesión previa.
+
+Serializa únicamente email y password. Conserva exactamente
+el contenido de la contraseña y no la almacena.
+
+El registro requiere HTTP 201 y devuelve AuthUser.
+No inicia sesión automáticamente.
+
+El login requiere HTTP 200 y devuelve SessionCredentials
+exclusivamente dentro de la capa de datos.
+
+Las respuestas validan campos obligatorios, UUID, token Bearer,
+generación y fechas UTC con entre cero y tres decimales.
+Los duplicados y documentos incompletos se rechazan.
+
+El adaptador no publica ni persiste sesiones.
+El repositorio de autenticación coordinará esas operaciones
+mediante PersistentSessionStore.
+
+La validación de entrada pertenece a dominio y presentación.
+Las pruebas de este adaptador utilizan respuestas simuladas.
 
 ## Flujo de trabajo
 
