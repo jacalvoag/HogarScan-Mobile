@@ -17,10 +17,46 @@ import com.example.hogarscan.scan.data.local.LocalHistoryOwner
 import com.example.hogarscan.scan.domain.usecase.ScanHistoryRecorder
 import com.example.hogarscan.scan.presentation.ScanHistoryViewModel
 import androidx.lifecycle.createSavedStateHandle
+import com.example.hogarscan.BuildConfig
+import com.example.hogarscan.auth.data.http.DefaultSessionApiClient
+import com.example.hogarscan.auth.data.http.SessionApiClient
+import com.example.hogarscan.auth.data.session.AndroidSessionStorage
+import com.example.hogarscan.auth.data.session.PersistentSessionStore
+import com.example.hogarscan.auth.domain.repository.SessionReader
+import com.example.hogarscan.shared.data.http.ApiEndpoint
+import com.example.hogarscan.shared.data.http.ApiTransport
+import com.example.hogarscan.shared.data.http.OkHttpApiTransport
+import com.example.hogarscan.shared.data.http.createApiHttpClient
+
 
 class AppContainer(context: Context) {
 
     private val appContext = context.applicationContext
+
+    private val sessionStorage by lazy {
+        AndroidSessionStorage(appContext)
+    }
+
+    val sessionStore by lazy {
+        PersistentSessionStore(sessionStorage)
+    }
+
+    val sessionReader: SessionReader
+        get() = sessionStore
+
+    val apiTransport: ApiTransport by lazy {
+        OkHttpApiTransport(
+            endpoint = ApiEndpoint.parse(BuildConfig.API_BASE_URL),
+            callFactory = createApiHttpClient()
+        )
+    }
+
+    val sessionApiClient: SessionApiClient by lazy {
+        DefaultSessionApiClient(
+            transport = apiTransport,
+            sessions = sessionStore
+        )
+    }
 
     private val database: HogarScanDatabase by lazy {
         Room.databaseBuilder(

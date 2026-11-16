@@ -135,9 +135,9 @@ La invalidación en memoria todavía no representa un logout remoto.
 
 ## Integración pendiente
 
-AndroidSessionStorage proporciona persistencia cifrada de credenciales.
-Quedan pendientes su coordinación con SessionRegistry, los flujos
-de autenticación y la composición en AppContainer.
+PersistentSessionStore coordina SessionRegistry y SessionStorage.
+AppContainer proporciona las instancias compartidas de sesión y HTTP.
+Quedan pendientes los flujos de autenticación y su presentación.
 
 ## Persistencia protegida de sesión
 
@@ -157,6 +157,40 @@ produce SessionStorageException. Leer no genera una clave nueva.
 
 clear elimina el archivo y la clave del almacenamiento.
 Esta operación local no sustituye la revocación remota de la sesión.
+
+## Coordinación de sesión persistente
+
+PersistentSessionStore es el punto de acceso para activar, restaurar,
+invalidar y actualizar la generación de la sesión.
+
+Las funcionalidades no deben modificar directamente SessionRegistry
+ni AndroidSessionStorage.
+
+La activación guarda las credenciales antes de publicar la sesión.
+Devuelve null si las credenciales vencieron antes de completarse.
+
+La restauración se aplica una vez. Elimina credenciales vencidas
+y genera un contexto local nuevo para una sesión recuperada.
+
+La invalidación comprueba cuenta y contexto antes de borrar.
+Una operación anterior no puede borrar una sesión más reciente.
+
+Un fallo de almacenamiento deja la memoria como Guest, se notifica
+y exige limpiar el almacenamiento antes de activar otra sesión.
+Si falla el borrado, no se da por confirmada la eliminación persistente.
+
+Las confirmaciones locales protegen disco y memoria frente a cancelación.
+La cancelación vuelve a comprobarse antes de retornar al consumidor.
+No se incluyen solicitudes HTTP dentro de esa sección protegida.
+
+SessionStorageFailure representa un fallo local de credenciales.
+Debe manejarse al convertir ApiResult en resultados de cada funcionalidad.
+
+AppContainer expone sessionReader para observar el estado,
+sessionApiClient para solicitudes autenticadas y apiTransport
+para los adaptadores de datos que consumen rutas públicas.
+
+El inicio de la restauración se conectará al flujo de autenticación.
 
 ## Flujo de trabajo
 

@@ -7,6 +7,7 @@ import com.example.hogarscan.shared.data.http.ApiErrorDecoder
 import com.example.hogarscan.shared.data.http.ApiRequest
 import com.example.hogarscan.shared.data.http.ApiResult
 import com.example.hogarscan.shared.data.http.ApiTransport
+import com.example.hogarscan.auth.data.session.SessionStorageException
 
 class DefaultSessionApiClient(
     private val transport: ApiTransport,
@@ -24,7 +25,11 @@ class DefaultSessionApiClient(
 
         sessionProblem(expectedSession)?.let { return it }
 
-        val token = sessions.tokenFor(expectedSession, nowMillis())
+        val token = try {
+            sessions.tokenFor(expectedSession, nowMillis())
+        } catch (_: SessionStorageException) {
+            return ApiResult.SessionStorageFailure
+        }
 
         sessionProblem(expectedSession)?.let { return it }
 
@@ -76,10 +81,13 @@ class DefaultSessionApiClient(
 
     private suspend fun invalidateExpected(
         expected: SessionSnapshot
-    ): ApiResult =
+    ): ApiResult = try {
         if (sessions.invalidate(expected)) {
             ApiResult.SessionUnavailable
         } else {
             ApiResult.SessionChanged
         }
+    } catch (_: SessionStorageException) {
+        ApiResult.SessionStorageFailure
+    }
 }
