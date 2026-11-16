@@ -135,11 +135,28 @@ La invalidación en memoria todavía no representa un logout remoto.
 
 ## Integración pendiente
 
-Quedan pendientes el almacenamiento real de credenciales, los flujos
+AndroidSessionStorage proporciona persistencia cifrada de credenciales.
+Quedan pendientes su coordinación con SessionRegistry, los flujos
 de autenticación y la composición en AppContainer.
 
-Las funcionalidades pueden desarrollarse con implementaciones
-de prueba de SessionApiClient y SessionReader.
+## Persistencia protegida de sesión
+
+AndroidSessionStorage guarda las credenciales cifradas con AES-GCM.
+La clave se genera y utiliza mediante Android Keystore.
+
+El registro usa el formato interno HSC1 y se guarda dentro de
+noBackupFilesDir, excluido de las operaciones de respaldo.
+contextId no se persiste: se genera al activar la sesión en memoria.
+
+Las operaciones utilizan Dispatchers.IO, un Mutex y AtomicFile.
+La aplicación debe compartir una instancia del almacenamiento.
+
+La lectura devuelve null cuando no existe un archivo.
+Un archivo alterado, una clave ausente o un fallo de almacenamiento
+produce SessionStorageException. Leer no genera una clave nueva.
+
+clear elimina el archivo y la clave del almacenamiento.
+Esta operación local no sustituye la revocación remota de la sesión.
 
 ## Flujo de trabajo
 
