@@ -5,11 +5,25 @@ plugins {
     alias(libs.plugins.androidx.room)
 }
 
-android {
+val apiBaseUrl = providers
+    .gradleProperty("HOGARSCAN_API_BASE_URL")
+    .orElse("")
+    .get()
 
-    room {
-        schemaDirectory("$projectDir/schemas")
-    }
+require(apiBaseUrl.none { it.code < 32 || it.code == 127 }) {
+    "HOGARSCAN_API_BASE_URL contiene caracteres de control."
+}
+
+val apiBaseUrlLiteral = apiBaseUrl
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
+    .let { "\"$it\"" }
+
+room {
+    schemaDirectory("$projectDir/schemas")
+}
+
+android {
 
     namespace = "com.example.hogarscan"
     compileSdk {
@@ -24,6 +38,12 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField(
+            "String",
+            "API_BASE_URL",
+            apiBaseUrlLiteral
+        )
     }
 
     buildTypes {
@@ -41,6 +61,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -66,6 +87,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.room.runtime)
     ksp(libs.androidx.room.compiler)
+    implementation(libs.okhttp)
 
     testImplementation(libs.kotlinx.coroutines.test)
 }

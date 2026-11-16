@@ -52,15 +52,12 @@ El historial local existente no se asigna automáticamente a una cuenta.
 
 ## Integración pendiente
 
-La implementación de SessionReader, el almacenamiento de credenciales,
-el cliente HTTP y su conexión a AppContainer se incorporarán
-en los siguientes avances.
+La configuración del destino HTTPS y la construcción del cliente
+OkHttp están disponibles en shared/data/http.
 
-Uzzi puede preparar dominio y presentación con implementaciones
-de prueba del contrato de sesión.
-
-Los adaptadores HTTP reales deben esperar al contrato compartido
-del cliente. No se crearán clientes ni almacenes de tokens paralelos.
+Quedan pendientes la ejecución compartida de solicitudes, sus errores,
+la implementación de SessionReader, el almacenamiento de credenciales
+y su conexión a AppContainer.
 
 ## Flujo de trabajo
 
