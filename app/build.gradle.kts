@@ -58,6 +58,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+        isCoreLibraryDesugaringEnabled = true
     }
     buildFeatures {
         compose = true
@@ -89,6 +90,7 @@ dependencies {
     ksp(libs.androidx.room.compiler)
     implementation(libs.okhttp)
     implementation(libs.moshi)
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
 
     testImplementation(libs.kotlinx.coroutines.test)
 }

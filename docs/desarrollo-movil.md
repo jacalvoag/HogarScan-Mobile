@@ -192,6 +192,31 @@ para los adaptadores de datos que consumen rutas públicas.
 
 El inicio de la restauración se conectará al flujo de autenticación.
 
+## Adaptador HTTP de autenticación
+
+HttpAuthDataSource consume POST /auth/register y POST /auth/login
+mediante el transporte compartido y sin incorporar una sesión previa.
+
+Serializa únicamente email y password. Conserva exactamente
+el contenido de la contraseña y no la almacena.
+
+El registro requiere HTTP 201 y devuelve AuthUser.
+No inicia sesión automáticamente.
+
+El login requiere HTTP 200 y devuelve SessionCredentials
+exclusivamente dentro de la capa de datos.
+
+Las respuestas validan campos obligatorios, UUID, token Bearer,
+generación y fechas UTC con entre cero y tres decimales.
+Los duplicados y documentos incompletos se rechazan.
+
+El adaptador no publica ni persiste sesiones.
+El repositorio de autenticación coordinará esas operaciones
+mediante PersistentSessionStore.
+
+La validación de entrada pertenece a dominio y presentación.
+Las pruebas de este adaptador utilizan respuestas simuladas.
+
 ## Flujo de trabajo
 
 - Las ramas funcionales parten de develop.
