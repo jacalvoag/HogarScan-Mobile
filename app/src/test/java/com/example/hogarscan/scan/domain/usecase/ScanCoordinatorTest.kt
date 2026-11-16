@@ -34,8 +34,152 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.example.hogarscan.auth.domain.model.SessionSnapshot
+import com.example.hogarscan.auth.domain.model.SessionState
+import com.example.hogarscan.auth.domain.repository.SessionReader
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 class ScanCoordinatorTest {
+    private val historySession = SessionSnapshot(
+        contextId = "context-a",
+        userId = "account-a",
+        email = "account-a@example.com",
+        expiresAtMillis = 10_000L,
+        summaryGeneration = 0
+    )
+
+    private fun sessionRecorder(
+        history: MemoryHistory,
+        sessionState: StateFlow<SessionState>
+    ): ScanHistoryRecorder {
+        val sessions = object : SessionReader {
+            override val state: StateFlow<SessionState> = sessionState
+        }
+
+        val owners = HistoryOwnerResolver(
+            sessions = sessions,
+            guestOwnerId = { "local:test" },
+            nowMillis = { 2_000L }
+        )
+
+        return ScanHistoryRecorder(
+            repository = history,
+            ownerId = {
+                checkNotNull(owners.resolve()) {
+                    "No se puede iniciar la revisión sin un propietario disponible."
+                }.ownerId
+            },
+            nowMillis = { 2_000L },
+            newId = { "record-1" }
+        )
+    }
+
+    @Test
+    fun recordedScan_keepsAccountOwnerWhenSessionChangesDuringInsert() =
+        runBlocking {
+            val sessionState = MutableStateFlow<SessionState>(
+                SessionState.Authenticated(historySession)
+            )
+
+            val history = MemoryHistory().apply {
+                onInsert = {
+                    sessionState.value = SessionState.Authenticated(
+                        historySession.copy(
+                            contextId = "context-b",
+                            userId = "account-b",
+                            email = "account-b@example.com"
+                        )
+                    )
+                }
+            }
+
+            val coordinator = ScanCoordinator(
+                FakeRepository { network },
+                probe(::result),
+                sessionRecorder(history, sessionState)
+            )
+
+            coordinator.execute(
+                request(config(end = "192.168.28.2", ports = setOf(80)))
+            ) {}
+
+            val stored = checkNotNull(history.current)
+            assertEquals("user:account-a", stored.ownerId)
+            assertEquals(ScanRecordStatus.COMPLETED, stored.status)
+            assertEquals(2, stored.results.size)
+        }
+
+    @Test
+    fun recordedScan_keepsGuestOwnerWhenLoginOccursDuringProbing() =
+        runBlocking {
+            val sessionState =
+                MutableStateFlow<SessionState>(SessionState.Guest)
+
+            val history = MemoryHistory()
+            val client = probe { address, port ->
+                sessionState.value = SessionState.Authenticated(historySession)
+                result(address, port)
+            }
+
+            val coordinator = ScanCoordinator(
+                FakeRepository { network },
+                client,
+                sessionRecorder(history, sessionState)
+            )
+
+            coordinator.execute(
+                request(config(end = "192.168.28.2", ports = setOf(80)))
+            ) {}
+
+            val stored = checkNotNull(history.current)
+            assertEquals("local:test", stored.ownerId)
+            assertEquals(ScanRecordStatus.COMPLETED, stored.status)
+            assertEquals(2, stored.results.size)
+        }
+
+    @Test
+    fun recordedScan_doesNotSaveOrProbeWithoutUsableOwner() {
+        val unavailableStates = listOf(
+            SessionState.Restoring,
+            SessionState.Authenticated(
+                historySession.copy(expiresAtMillis = 2_000L)
+            )
+        )
+
+        unavailableStates.forEach { state ->
+            val sessionState = MutableStateFlow<SessionState>(state)
+            val history = MemoryHistory()
+            var calls = 0
+
+            val client = probe { address, port ->
+                calls++
+                result(address, port)
+            }
+
+            val coordinator = ScanCoordinator(
+                FakeRepository { network },
+                client,
+                sessionRecorder(history, sessionState)
+            )
+
+            assertThrows(IllegalStateException::class.java) {
+                runBlocking {
+                    coordinator.execute(
+                        request(
+                            config(
+                                end = "192.168.28.2",
+                                ports = setOf(80)
+                            )
+                        )
+                    ) {}
+                }
+            }
+
+            assertEquals(null, history.current)
+            assertEquals(0, calls)
+        }
+    }
 
     private val network = WifiNetworkResult.Available(
         NetworkScope(Ipv4Address.parse("192.168.28.43"), 24),

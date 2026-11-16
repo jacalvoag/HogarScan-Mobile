@@ -25,6 +25,12 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
+import com.example.hogarscan.auth.domain.model.SessionSnapshot
+import com.example.hogarscan.auth.domain.model.SessionState
+import com.example.hogarscan.auth.domain.repository.SessionReader
+import com.example.hogarscan.scan.domain.usecase.HistoryOwnerResolver
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.test.advanceTimeBy
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ScanHistoryViewModelTest {
@@ -67,13 +73,180 @@ class ScanHistoryViewModelTest {
 
     private fun viewModel(
         repository: FakeRepository,
+        sessionState: StateFlow<SessionState> =
+            MutableStateFlow<SessionState>(SessionState.Guest),
+        nowMillis: () -> Long = System::currentTimeMillis,
         ownerId: suspend () -> String = { "local:test" }
-    ): ScanHistoryViewModel = ViewModelProvider(
-        store,
-        viewModelFactory {
-            initializer { ScanHistoryViewModel(repository, ownerId) }
+    ): ScanHistoryViewModel {
+        val sessions = object : SessionReader {
+            override val state: StateFlow<SessionState> = sessionState
         }
-    )[ScanHistoryViewModel::class.java]
+
+        val owners = HistoryOwnerResolver(
+            sessions = sessions,
+            guestOwnerId = ownerId,
+            nowMillis = nowMillis
+        )
+
+        return ViewModelProvider(
+            store,
+            viewModelFactory {
+                initializer {
+                    ScanHistoryViewModel(
+                        repository = repository,
+                        owners = owners,
+                        sessions = sessions,
+                        nowMillis = nowMillis
+                    )
+                }
+            }
+        )[ScanHistoryViewModel::class.java]
+    }
+
+    private val accountSession = SessionSnapshot(
+        contextId = "context-a",
+        userId = "account-a",
+        email = "account-a@example.com",
+        expiresAtMillis = Long.MAX_VALUE,
+        summaryGeneration = 0
+    )
+
+    @Test
+    fun switchingAccountsReplacesHistoryAndFiltersOtherOwners() = runTest {
+        val sessionState = MutableStateFlow<SessionState>(SessionState.Guest)
+        val localRecord = ScanRecordSummary(
+            id = "local-scan",
+            ownerId = "local:test",
+            status = ScanRecordStatus.RUNNING,
+            startedAtMillis = 1_000L,
+            finishedAtMillis = null
+        )
+        val accountRecord = localRecord.copy(
+            id = "account-scan",
+            ownerId = "user:account-a"
+        )
+        val otherRecord = localRecord.copy(
+            id = "other-scan",
+            ownerId = "user:account-b"
+        )
+
+        val repository = FakeRepository().apply {
+            records.value = listOf(localRecord)
+        }
+        val viewModel = viewModel(repository, sessionState)
+        runCurrent()
+
+        assertEquals(
+            ScanHistoryUiState.Loaded(listOf(localRecord)),
+            viewModel.uiState.value
+        )
+
+        sessionState.value = SessionState.Authenticated(accountSession)
+        runCurrent()
+
+        assertEquals("user:account-a", repository.observedOwner)
+        assertEquals(
+            ScanHistoryUiState.Loaded(emptyList()),
+            viewModel.uiState.value
+        )
+
+        repository.records.value = listOf(accountRecord)
+        runCurrent()
+
+        assertEquals(
+            ScanHistoryUiState.Loaded(listOf(accountRecord)),
+            viewModel.uiState.value
+        )
+
+        sessionState.value = SessionState.Authenticated(
+            accountSession.copy(
+                contextId = "context-b",
+                userId = "account-b",
+                email = "account-b@example.com"
+            )
+        )
+        runCurrent()
+
+        assertEquals("user:account-b", repository.observedOwner)
+        assertEquals(
+            ScanHistoryUiState.Loaded(emptyList()),
+            viewModel.uiState.value
+        )
+
+        repository.records.value = listOf(accountRecord, otherRecord)
+        runCurrent()
+
+        assertEquals(
+            ScanHistoryUiState.Loaded(listOf(otherRecord)),
+            viewModel.uiState.value
+        )
+
+        sessionState.value = SessionState.Guest
+        repository.records.value = listOf(localRecord)
+        runCurrent()
+
+        assertEquals("local:test", repository.observedOwner)
+        assertEquals(
+            ScanHistoryUiState.Loaded(listOf(localRecord)),
+            viewModel.uiState.value
+        )
+    }
+
+    @Test
+    fun changingSummaryGenerationDoesNotRestartHistory() = runTest {
+        val sessionState = MutableStateFlow<SessionState>(
+            SessionState.Authenticated(accountSession)
+        )
+        val repository = FakeRepository()
+        viewModel(repository, sessionState)
+        runCurrent()
+
+        sessionState.value = SessionState.Authenticated(
+            accountSession.copy(summaryGeneration = 1)
+        )
+        runCurrent()
+
+        assertEquals(1, repository.observations)
+        assertEquals("user:account-a", repository.observedOwner)
+    }
+
+    @Test
+    fun expirationRemovesVisibleHistoryWithoutOpeningGuestHistory() = runTest {
+        val sessionState = MutableStateFlow<SessionState>(
+            SessionState.Authenticated(
+                accountSession.copy(expiresAtMillis = 2_000L)
+            )
+        )
+        val repository = FakeRepository().apply {
+            records.value = listOf(
+                ScanRecordSummary(
+                    id = "account-scan",
+                    ownerId = "user:account-a",
+                    status = ScanRecordStatus.RUNNING,
+                    startedAtMillis = 1_000L,
+                    finishedAtMillis = null
+                )
+            )
+        }
+        val viewModel = viewModel(
+            repository = repository,
+            sessionState = sessionState,
+            nowMillis = { 1_000L + testScheduler.currentTime }
+        )
+        runCurrent()
+
+        assertEquals(
+            ScanHistoryUiState.Loaded(repository.records.value),
+            viewModel.uiState.value
+        )
+
+        advanceTimeBy(1_000L)
+        runCurrent()
+
+        assertEquals(ScanHistoryUiState.Error, viewModel.uiState.value)
+        assertEquals("user:account-a", repository.observedOwner)
+        assertEquals(1, repository.observations)
+    }
 
     @Before
     fun setUp() {

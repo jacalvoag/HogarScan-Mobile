@@ -31,6 +31,7 @@ import com.example.hogarscan.auth.data.http.HttpAuthDataSource
 import com.example.hogarscan.auth.data.repository.DefaultAuthRepository
 import com.example.hogarscan.auth.domain.repository.AuthRepository
 import com.example.hogarscan.auth.presentation.AuthViewModel
+import com.example.hogarscan.scan.domain.usecase.HistoryOwnerResolver
 
 
 class AppContainer(context: Context) {
@@ -98,13 +99,24 @@ class AppContainer(context: Context) {
 
     val localHistoryOwner by lazy { LocalHistoryOwner(appContext) }
 
+    private val historyOwnerResolver by lazy {
+        HistoryOwnerResolver(
+            sessions = sessionReader,
+            guestOwnerId = localHistoryOwner::getOwnerId
+        )
+    }
+
     private val scanCoordinator by lazy {
         ScanCoordinator(
             wifiNetworkRepository,
             tcpProbe,
             historyRecorder = ScanHistoryRecorder(
                 repository = scanHistoryRepository,
-                ownerId = localHistoryOwner::getOwnerId
+                ownerId = {
+                    checkNotNull(historyOwnerResolver.resolve()) {
+                        "No se puede iniciar la revisión sin un propietario disponible."
+                    }.ownerId
+                }
             )
         )
     }
@@ -121,7 +133,8 @@ class AppContainer(context: Context) {
             initializer {
                 ScanHistoryViewModel(
                     repository = scanHistoryRepository,
-                    ownerId = localHistoryOwner::getOwnerId,
+                    owners = historyOwnerResolver,
+                    sessions = sessionReader,
                     savedStateHandle = createSavedStateHandle()
                 )
             }
