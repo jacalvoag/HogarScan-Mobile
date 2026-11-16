@@ -52,12 +52,23 @@ El historial local existente no se asigna automáticamente a una cuenta.
 
 ## Integración pendiente
 
-La configuración del destino HTTPS y la construcción del cliente
-OkHttp están disponibles en shared/data/http.
+La configuración HTTPS, la construcción del cliente OkHttp y el
+transporte compartido están disponibles en shared/data/http.
 
-Quedan pendientes la ejecución compartida de solicitudes, sus errores,
-la implementación de SessionReader, el almacenamiento de credenciales
-y su conexión a AppContainer.
+ApiTransport admite GET, POST y DELETE. Conserva el estado HTTP,
+el cuerpo declarado como JSON y Retry-After cuando contiene segundos.
+
+Distingue fallos de conexión, timeout, TLS y respuestas no admitidas.
+La cancelación se propaga a la llamada HTTP.
+
+El transporte limita las respuestas JSON a 1 MiB y no interpreta
+sus campos. Los adaptadores deben validar el JSON y su estructura.
+
+bearerToken es un detalle de la infraestructura de datos.
+Las pantallas y los ViewModels no deben obtenerlo ni almacenarlo.
+
+Quedan pendientes la interpretación compartida de errores del backend,
+la conexión con la sesión y la composición en AppContainer.
 
 ## Flujo de trabajo
 
