@@ -17,6 +17,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withTimeoutOrNull
+import com.example.hogarscan.auth.domain.model.LogoutOutcome
 
 class DefaultAuthRepository(
     private val remote: HttpAuthDataSource,
@@ -97,6 +98,69 @@ class DefaultAuthRepository(
                 }
             }
         }
+    }
+
+    override suspend fun logout(
+        expected: SessionSnapshot
+    ): AuthResult<LogoutOutcome> = exclusive {
+        when (val state = sessions.state.value) {
+            SessionState.Restoring ->
+                return@exclusive failure(AuthFailure.SESSION_NOT_READY)
+
+            SessionState.Guest ->
+                return@exclusive failure(AuthFailure.SESSION_CHANGED)
+
+            is SessionState.Authenticated -> {
+                if (
+                    state.session.contextId != expected.contextId ||
+                    state.session.userId != expected.userId
+                ) {
+                    return@exclusive failure(AuthFailure.SESSION_CHANGED)
+                }
+            }
+        }
+
+        val token = try {
+            sessions.tokenFor(expected, nowMillis())
+        } catch (_: SessionStorageException) {
+            return@exclusive failure(AuthFailure.STORAGE)
+        }
+
+        val cleared = try {
+            sessions.invalidate(expected)
+        } catch (_: SessionStorageException) {
+            token?.let { revokeUnused(it) }
+            return@exclusive failure(AuthFailure.STORAGE)
+        }
+
+        if (!cleared) {
+            return@exclusive failure(AuthFailure.SESSION_CHANGED)
+        }
+
+        val response = token?.let {
+            withTimeoutOrNull(5_000) {
+                remote.revoke(it)
+            }
+        }
+
+        val confirmed = when (response) {
+            is ApiResult.Success ->
+                response.statusCode == 204 && response.bodyJson == null
+
+            is ApiResult.HttpFailure ->
+                response.statusCode == 401 &&
+                        ApiErrorDecoder.decode(response).code == "UNAUTHENTICATED"
+
+            else -> false
+        }
+
+        AuthResult.Success(
+            if (confirmed) {
+                LogoutOutcome.REMOTE_CONFIRMED
+            } else {
+                LogoutOutcome.REMOTE_UNCONFIRMED
+            }
+        )
     }
 
     private suspend fun guestProblem(): AuthFailure? {

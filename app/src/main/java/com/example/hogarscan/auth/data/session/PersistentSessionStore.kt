@@ -13,7 +13,7 @@ import kotlinx.coroutines.withContext
 class PersistentSessionStore(
     private val storage: SessionStorage,
     private val nowMillis: () -> Long = System::currentTimeMillis
-) : SessionCredentialSource, AuthSessionStore {
+) : AuthSessionStore {
 
     private val mutex = Mutex()
     private val registry = SessionRegistry(nowMillis = nowMillis)

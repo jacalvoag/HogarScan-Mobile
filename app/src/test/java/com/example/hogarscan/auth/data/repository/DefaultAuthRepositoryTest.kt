@@ -341,6 +341,20 @@ class DefaultAuthRepositoryTest {
         var failInvalidate = false
         var rejectExpired = false
 
+        override suspend fun tokenFor(
+            expected: SessionSnapshot,
+            nowMillis: Long
+        ): String? {
+            val active = (state.value as? SessionState.Authenticated)?.session
+                ?: return null
+
+            return receivedToken.takeIf {
+                active.contextId == expected.contextId &&
+                        active.userId == expected.userId &&
+                        active.expiresAtMillis > nowMillis
+            }
+        }
+
         override suspend fun restore(): Boolean {
             if (failRestore) throw storageFailure()
             state.value = SessionState.Guest
