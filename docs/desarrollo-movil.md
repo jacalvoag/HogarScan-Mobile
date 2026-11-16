@@ -81,8 +81,43 @@ Los conflictos STALE_SUMMARY_GENERATION e INVALID_SUMMARY_GENERATION
 requieren una generación actual válida. Interpretar el error no
 modifica datos ni provoca reintentos automáticos.
 
-Quedan pendientes la conexión del cliente con la sesión y su
-composición en AppContainer.
+## Solicitudes autenticadas
+
+Los repositorios de datos de funcionalidades autenticadas reciben
+SessionApiClient y entregan el SessionSnapshot capturado para la operación.
+
+Las solicitudes se construyen sin bearerToken. DefaultSessionApiClient
+incorpora la credencial mediante SessionCredentialSource.
+
+El cliente comprueba cuenta, contexto y vencimiento antes del envío
+y al recibir el resultado.
+
+SessionUnavailable indica que no hay una sesión utilizable.
+SessionChanged indica que la operación pertenece a otro contexto:
+su resultado no debe modificar la cuenta actual.
+
+Una respuesta HTTP 401 con code UNAUTHENTICATED invalida únicamente
+el contexto utilizado. Los errores de red y otros errores HTTP
+no cierran automáticamente la sesión.
+
+Cambiar summaryGeneration no equivale a cambiar de sesión.
+Las reglas de generación se comprobarán en la sincronización.
+
+La implementación de SessionCredentialSource debe hacer atómicas
+la comprobación y lectura de credenciales, así como la comprobación
+e invalidación del contexto.
+
+Estas comprobaciones no sustituyen las validaciones del propietario
+en persistencia ni revierten operaciones ejecutadas por el servidor.
+
+## Integración pendiente
+
+Quedan pendientes el almacenamiento real de credenciales, los flujos
+de autenticación y la composición en AppContainer.
+
+Las funcionalidades pueden desarrollarse con implementaciones
+de prueba de SessionApiClient y SessionReader.
+
 ## Flujo de trabajo
 
 - Las ramas funcionales parten de develop.

@@ -37,6 +37,8 @@ sealed interface ApiResult {
     data object TimedOut : ApiResult
     data object TlsFailure : ApiResult
     data object InvalidResponse : ApiResult
+    data object SessionUnavailable : ApiResult
+    data object SessionChanged : ApiResult
 }
 
 fun interface ApiTransport {
