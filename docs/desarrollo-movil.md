@@ -110,6 +110,29 @@ e invalidación del contexto.
 Estas comprobaciones no sustituyen las validaciones del propietario
 en persistencia ni revierten operaciones ejecutadas por el servidor.
 
+## Registro de sesión activa
+
+SessionRegistry mantiene en memoria el estado público y la credencial.
+Las operaciones sobre credenciales se coordinan mediante un Mutex.
+
+Cada activación crea un contexto local nuevo, incluso para la misma cuenta.
+La invalidación exige coincidencia de cuenta y contexto.
+
+completeRestoration solo aplica mientras el estado sea Restoring.
+Devuelve true si aplicó el resultado, que puede ser Authenticated o Guest.
+Una restauración tardía no reemplaza una sesión más reciente.
+
+Las credenciales ausentes o vencidas completan la restauración como Guest.
+tokenFor comprueba el vencimiento, pero no modifica por sí mismo el estado.
+
+La generación puede actualizarse conservando contexto y token.
+Las respuestas con una generación inferior a la actual se rechazan.
+Los snapshots previamente capturados permanecen sin cambios.
+
+Este registro mantiene la sesión durante la ejecución del proceso.
+La persistencia protegida y su coordinación se incorporarán por separado.
+La invalidación en memoria todavía no representa un logout remoto.
+
 ## Integración pendiente
 
 Quedan pendientes el almacenamiento real de credenciales, los flujos
