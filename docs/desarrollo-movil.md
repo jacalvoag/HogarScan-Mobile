@@ -67,9 +67,22 @@ sus campos. Los adaptadores deben validar el JSON y su estructura.
 bearerToken es un detalle de la infraestructura de datos.
 Las pantallas y los ViewModels no deben obtenerlo ni almacenarlo.
 
-Quedan pendientes la interpretación compartida de errores del backend,
-la conexión con la sesión y la composición en AppContainer.
+ApiErrorDecoder interpreta los errores HTTP del backend y conserva
+estado HTTP, código, mensaje y Retry-After en segundos.
 
+Las funcionalidades deciden por code, no por el texto de message.
+Los códigos desconocidos se conservan para permitir una respuesta
+general sin inventar acciones.
+
+Las respuestas ausentes o inválidas producen un mensaje general y
+code nulo. No deben utilizarse para cambiar generaciones.
+
+Los conflictos STALE_SUMMARY_GENERATION e INVALID_SUMMARY_GENERATION
+requieren una generación actual válida. Interpretar el error no
+modifica datos ni provoca reintentos automáticos.
+
+Quedan pendientes la conexión del cliente con la sesión y su
+composición en AppContainer.
 ## Flujo de trabajo
 
 - Las ramas funcionales parten de develop.
