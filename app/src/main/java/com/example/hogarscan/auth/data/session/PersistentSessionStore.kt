@@ -13,7 +13,7 @@ import kotlinx.coroutines.withContext
 class PersistentSessionStore(
     private val storage: SessionStorage,
     private val nowMillis: () -> Long = System::currentTimeMillis
-) : SessionCredentialSource {
+) : SessionCredentialSource, AuthSessionStore {
 
     private val mutex = Mutex()
     private val registry = SessionRegistry(nowMillis = nowMillis)
@@ -21,7 +21,7 @@ class PersistentSessionStore(
 
     override val state: StateFlow<SessionState> = registry.state
 
-    suspend fun restore(): Boolean = mutex.withLock {
+    override suspend fun restore(): Boolean = mutex.withLock {
         if (state.value != SessionState.Restoring) {
             return@withLock false
         }
@@ -47,7 +47,7 @@ class PersistentSessionStore(
         }
     }
 
-    suspend fun activate(
+    override suspend fun activate(
         credentials: SessionCredentials
     ): SessionSnapshot? = mutex.withLock {
         if (credentials.expiresAtMillis <= nowMillis()) {

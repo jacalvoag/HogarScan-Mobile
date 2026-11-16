@@ -38,6 +38,15 @@ class HttpAuthDataSource(
             AuthJsonCodec::decodeLogin
         )
 
+    suspend fun revoke(accessToken: String): ApiResult =
+        transport.execute(
+            ApiRequest(
+                method = ApiMethod.POST,
+                path = "/auth/logout",
+                bearerToken = accessToken
+            )
+        )
+
     private suspend fun <T> post(
         path: String,
         expectedStatus: Int,
