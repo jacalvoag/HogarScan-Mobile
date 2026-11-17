@@ -1,8 +1,9 @@
 # Propuesta de integración de evaluaciones
 
 Esta propuesta requiere acuerdo con José antes de integrarse como contrato
-compartido. Los modelos iniciales viven en `evaluations/domain/model`; todavía
-no están conectados a la navegación, persistencia ni API.
+compartido. Los modelos viven en `evaluations/domain/model` y existe un
+adaptador HTTP aislado. Todavía no están conectados a la navegación ni a
+persistencia y no se han probado contra el despliegue real.
 
 ## Entrada y resultado
 
@@ -56,6 +57,22 @@ requieren pruebas con Gradle y contra la versión acordada del backend.
 `HttpRulesDataSource` consulta `GET /rules` sin credenciales y transforma los
 metadatos publicados a `EvaluationRules`. La versión procede del servidor;
 la aplicación no utiliza estas reglas para ejecutar otro motor de evaluación.
+
+## Evaluación completa y preparación del resumen
+
+`EvaluateCompletedScan` recibe una revisión completa, sesión y, opcionalmente,
+identificaciones por objetivo. Evalúa un objetivo por solicitud en secuencia,
+con progreso y propagación de cancelación. Ante fallo devuelve el objetivo y el
+tipo de error sin declarar completada la evaluación. Ante cambio de cuenta,
+contexto o generación descarta el resultado. No guarda resultados parciales ni
+hace reintentos; la política de recuperación y persistencia queda por acordar.
+
+`prepareEvaluatedScanSummary` requiere exactamente una evaluación por objetivo
+con las observaciones, revisión y propietario correspondientes. Calcula las
+direcciones que respondieron y los conteos de hallazgos, conservando la
+generación capturada al inicio de la revisión. No guarda ni encola el resumen:
+la implementación coordinada por José debe comprobar de forma atómica el
+propietario, la sesión y la generación en el momento de persistir y sincronizar.
 
 ## Preparación del detalle de hallazgo
 
