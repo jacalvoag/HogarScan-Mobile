@@ -56,3 +56,19 @@ requieren pruebas con Gradle y contra la versión acordada del backend.
 `HttpRulesDataSource` consulta `GET /rules` sin credenciales y transforma los
 metadatos publicados a `EvaluationRules`. La versión procede del servidor;
 la aplicación no utiliza estas reglas para ejecutar otro motor de evaluación.
+
+## Preparación del detalle de hallazgo
+
+`EvaluationResult.findingDetail(index)` transforma un hallazgo de la respuesta
+en datos de presentación: prioridad, categoría, certeza, evidencia, explicación,
+recomendación, limitación, identificador y versión de regla, y estados NVD/KEV.
+Una coincidencia CVE solo se asocia con su identificador correspondiente; KEV
+desconocido no se muestra como negativo. El índice se utiliza únicamente dentro
+de esa respuesta y no es identificador permanente.
+
+La vista de detalle del Figma contiene iconos SVG y fuentes que el proyecto no
+tiene configurados. Su integración visual y navegación siguen pendientes de
+acordar con José, ya que el soporte de recursos o dependencias puede afectar
+archivos compartidos. El texto de ejemplo del diseño no debe utilizarse como
+evidencia real: el escaneo TCP actual no identifica por sí solo HTTP ni produce
+porcentajes de certeza o vulnerabilidades confirmadas.
