@@ -9,19 +9,22 @@ import java.util.UUID
 
 class ScanHistoryRecorder(
     private val repository: ScanHistoryRepository,
-    private val ownerId: suspend () -> String,
+    private val ownerContext: suspend () -> HistoryOwnerContext,
     private val nowMillis: () -> Long = System::currentTimeMillis,
     private val newId: () -> String = { UUID.randomUUID().toString() }
 ) {
     suspend fun start(config: ScanConfig): ScanRecord {
-        val owner = ownerId()
+        val context = ownerContext()
+
         val record = ScanRecord(
             id = newId(),
-            ownerId = owner,
+            ownerId = context.ownerId,
             config = config,
             startedAtMillis = nowMillis(),
-            status = ScanRecordStatus.RUNNING
+            status = ScanRecordStatus.RUNNING,
+            summaryGeneration = context.session?.summaryGeneration
         )
+
         repository.insert(record)
         return record
     }

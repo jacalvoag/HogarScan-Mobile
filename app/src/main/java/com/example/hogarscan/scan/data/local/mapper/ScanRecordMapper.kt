@@ -22,7 +22,8 @@ fun ScanRecord.toLocal(): ScanRecordWithDetails {
             endAddress = config.endAddress.value,
             status = status,
             startedAtMillis = startedAtMillis,
-            finishedAtMillis = finishedAtMillis
+            finishedAtMillis = finishedAtMillis,
+            summaryGeneration = summaryGeneration
         ),
         ports = config.ports.map { port ->
             ScanPortEntity(scanId = id, port = port)
@@ -73,7 +74,8 @@ fun ScanRecordWithDetails.toDomain(): ScanRecord {
                 durationMillis = result.durationMillis
             )
         },
-        finishedAtMillis = record.finishedAtMillis
+        finishedAtMillis = record.finishedAtMillis,
+        summaryGeneration = record.summaryGeneration
     )
 }
 

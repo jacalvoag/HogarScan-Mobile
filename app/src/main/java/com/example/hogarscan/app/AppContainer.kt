@@ -115,10 +115,10 @@ class AppContainer(context: Context) {
             tcpProbe,
             historyRecorder = ScanHistoryRecorder(
                 repository = scanHistoryRepository,
-                ownerId = {
+                ownerContext = {
                     checkNotNull(historyOwnerResolver.resolve()) {
                         "No se puede iniciar la revisión sin un propietario disponible."
-                    }.ownerId
+                    }
                 }
             )
         )
