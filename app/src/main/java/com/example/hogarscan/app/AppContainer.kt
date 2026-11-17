@@ -32,6 +32,7 @@ import com.example.hogarscan.auth.data.repository.DefaultAuthRepository
 import com.example.hogarscan.auth.domain.repository.AuthRepository
 import com.example.hogarscan.auth.presentation.AuthViewModel
 import com.example.hogarscan.scan.domain.usecase.HistoryOwnerResolver
+import com.example.hogarscan.scan.data.local.HogarScanMigrations.MIGRATION_1_2
 
 
 class AppContainer(context: Context) {
@@ -85,7 +86,9 @@ class AppContainer(context: Context) {
             appContext,
             HogarScanDatabase::class.java,
             "hogarscan.db"
-        ).build()
+        )
+            .addMigrations(MIGRATION_1_2)
+            .build()
     }
 
     val scanHistoryRepository: ScanHistoryRepository by lazy {

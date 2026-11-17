@@ -6,14 +6,16 @@ import com.example.hogarscan.scan.data.local.dao.ScanRecordDao
 import com.example.hogarscan.scan.data.local.entity.ProbeResultEntity
 import com.example.hogarscan.scan.data.local.entity.ScanPortEntity
 import com.example.hogarscan.scan.data.local.entity.ScanRecordEntity
+import com.example.hogarscan.scan.data.local.entity.ScanSummaryEntity
 
 @Database(
     entities = [
         ScanRecordEntity::class,
         ScanPortEntity::class,
-        ProbeResultEntity::class
+        ProbeResultEntity::class,
+        ScanSummaryEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = true
 )
 abstract class HogarScanDatabase : RoomDatabase() {

@@ -91,6 +91,7 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.moshi)
     coreLibraryDesugaring(libs.desugar.jdk.libs)
+    androidTestImplementation(libs.androidx.room.testing)
 
     testImplementation(libs.kotlinx.coroutines.test)
 }
