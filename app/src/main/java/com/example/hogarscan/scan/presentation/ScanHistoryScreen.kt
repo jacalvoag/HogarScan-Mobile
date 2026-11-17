@@ -25,11 +25,17 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.lifecycle.ViewModelProvider
+import com.example.hogarscan.evaluations.presentation.ScanEvaluationPanel
+import com.example.hogarscan.evaluations.presentation.ScanEvaluationViewModel
+import com.example.hogarscan.evaluations.data.HttpRulesDataSource
 
 @Composable
 fun ScanHistoryRoute(
     viewModel: ScanHistoryViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    evaluationFactory: ((String, String) -> ViewModelProvider.Factory)? = null,
+    rulesDataSource: HttpRulesDataSource? = null
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val detailState by viewModel.detailState.collectAsStateWithLifecycle()
@@ -53,7 +59,16 @@ fun ScanHistoryRoute(
             state = detailState,
             onBack = viewModel::closeDetail,
             onRetry = viewModel::retryDetail,
-            modifier = modifier
+            modifier = modifier,
+            evaluationContent = { record ->
+                if (evaluationFactory != null) {
+                    val evaluationViewModel: ScanEvaluationViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+                        key = "scan-evaluation:${record.id}",
+                        factory = evaluationFactory(record.id, record.ownerId)
+                    )
+                    ScanEvaluationPanel(evaluationViewModel, record, rulesDataSource)
+                }
+            }
         )
     }
 }

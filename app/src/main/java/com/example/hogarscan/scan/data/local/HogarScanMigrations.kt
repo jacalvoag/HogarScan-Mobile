@@ -5,6 +5,18 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 object HogarScanMigrations {
 
+    val MIGRATION_2_3 = object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("""CREATE TABLE IF NOT EXISTS scan_evaluations (
+                scan_id TEXT NOT NULL, address INTEGER NOT NULL, response_json TEXT NOT NULL,
+                vendor TEXT, product TEXT, version TEXT, identification_source TEXT,
+                PRIMARY KEY(scan_id, address),
+                FOREIGN KEY(scan_id) REFERENCES scan_records(id) ON UPDATE NO ACTION ON DELETE CASCADE
+            )""".trimIndent())
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_scan_evaluations_scan_id ON scan_evaluations(scan_id)")
+        }
+    }
+
     val MIGRATION_1_2 = object : Migration(1, 2) {
         override fun migrate(db: SupportSQLiteDatabase) {
             db.execSQL(

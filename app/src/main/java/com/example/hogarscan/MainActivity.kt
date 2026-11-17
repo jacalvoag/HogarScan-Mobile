@@ -5,6 +5,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Scaffold
@@ -27,6 +29,7 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.ui.res.stringResource
 import com.example.hogarscan.auth.presentation.AuthRoute
 import com.example.hogarscan.auth.presentation.AuthViewModel
+import com.example.hogarscan.scan.presentation.DeleteSummariesPanel
 
 class MainActivity : ComponentActivity() {
 
@@ -89,17 +92,17 @@ class MainActivity : ComponentActivity() {
 
                             ScanHistoryRoute(
                                 viewModel = historyViewModel,
-                                modifier = Modifier.padding(innerPadding)
+                                modifier = Modifier.padding(innerPadding),
+                                evaluationFactory = container::scanEvaluationViewModelFactory,
+                                rulesDataSource = container.evaluationRules
                             )
                         }
 
                         2 -> {
-                            AuthRoute(
-                                viewModel = authViewModel,
-                                modifier = Modifier
-                                    .padding(innerPadding)
-                                    .consumeWindowInsets(innerPadding)
-                            )
+                            Column(Modifier.padding(innerPadding).consumeWindowInsets(innerPadding)) {
+                                Box(Modifier.weight(1f)) { AuthRoute(viewModel = authViewModel) }
+                                DeleteSummariesPanel(container.sessionReader, container.deleteScanSummaries)
+                            }
                         }
                     }
                 }

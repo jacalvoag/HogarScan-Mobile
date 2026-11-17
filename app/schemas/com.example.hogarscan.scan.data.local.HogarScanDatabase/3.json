@@ -1,0 +1,393 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 3,
+    "identityHash": "fcd21420254e0d93b1215ff4d065a279",
+    "entities": [
+      {
+        "tableName": "scan_records",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `owner_id` TEXT NOT NULL, `local_address` INTEGER NOT NULL, `prefix_length` INTEGER NOT NULL, `start_address` INTEGER NOT NULL, `end_address` INTEGER NOT NULL, `execution_status` TEXT NOT NULL, `started_at_millis` INTEGER NOT NULL, `finished_at_millis` INTEGER, `summary_generation` INTEGER, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ownerId",
+            "columnName": "owner_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "localAddress",
+            "columnName": "local_address",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "prefixLength",
+            "columnName": "prefix_length",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startAddress",
+            "columnName": "start_address",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endAddress",
+            "columnName": "end_address",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "execution_status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedAtMillis",
+            "columnName": "started_at_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "finishedAtMillis",
+            "columnName": "finished_at_millis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "summaryGeneration",
+            "columnName": "summary_generation",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_scan_records_owner_id_started_at_millis",
+            "unique": false,
+            "columnNames": [
+              "owner_id",
+              "started_at_millis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_scan_records_owner_id_started_at_millis` ON `${TABLE_NAME}` (`owner_id`, `started_at_millis`)"
+          }
+        ]
+      },
+      {
+        "tableName": "scan_ports",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`scan_id` TEXT NOT NULL, `port` INTEGER NOT NULL, PRIMARY KEY(`scan_id`, `port`), FOREIGN KEY(`scan_id`) REFERENCES `scan_records`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "scanId",
+            "columnName": "scan_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "port",
+            "columnName": "port",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "scan_id",
+            "port"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "scan_records",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "scan_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "probe_results",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`scan_id` TEXT NOT NULL, `address` INTEGER NOT NULL, `port` INTEGER NOT NULL, `outcome` TEXT NOT NULL, `duration_millis` INTEGER NOT NULL, PRIMARY KEY(`scan_id`, `port`, `address`), FOREIGN KEY(`scan_id`, `port`) REFERENCES `scan_ports`(`scan_id`, `port`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "scanId",
+            "columnName": "scan_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "address",
+            "columnName": "address",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "port",
+            "columnName": "port",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "outcome",
+            "columnName": "outcome",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "durationMillis",
+            "columnName": "duration_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "scan_id",
+            "port",
+            "address"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "scan_ports",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "scan_id",
+              "port"
+            ],
+            "referencedColumns": [
+              "scan_id",
+              "port"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "scan_summaries",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`scan_id` TEXT NOT NULL, `user_id` TEXT NOT NULL, `summary_generation` INTEGER NOT NULL, `started_at_millis` INTEGER NOT NULL, `finished_at_millis` INTEGER NOT NULL, `addresses_scanned` INTEGER NOT NULL, `addresses_responded` INTEGER NOT NULL, `accepted_services` INTEGER NOT NULL, `tcp_service_accessible` INTEGER NOT NULL, `protocol_identified` INTEGER NOT NULL, `preventive_review` INTEGER NOT NULL, `possible_cve_match` INTEGER NOT NULL, `insufficient_evidence` INTEGER NOT NULL, `sync_status` TEXT NOT NULL, `received_at_millis` INTEGER, PRIMARY KEY(`scan_id`), FOREIGN KEY(`scan_id`) REFERENCES `scan_records`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "scanId",
+            "columnName": "scan_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "userId",
+            "columnName": "user_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "summaryGeneration",
+            "columnName": "summary_generation",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedAtMillis",
+            "columnName": "started_at_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "finishedAtMillis",
+            "columnName": "finished_at_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "addressesScanned",
+            "columnName": "addresses_scanned",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "addressesResponded",
+            "columnName": "addresses_responded",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "acceptedServices",
+            "columnName": "accepted_services",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tcpServiceAccessible",
+            "columnName": "tcp_service_accessible",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "protocolIdentified",
+            "columnName": "protocol_identified",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "preventiveReview",
+            "columnName": "preventive_review",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "possibleCveMatch",
+            "columnName": "possible_cve_match",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "insufficientEvidence",
+            "columnName": "insufficient_evidence",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "syncStatus",
+            "columnName": "sync_status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "receivedAtMillis",
+            "columnName": "received_at_millis",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "scan_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_scan_summaries_user_id_sync_status",
+            "unique": false,
+            "columnNames": [
+              "user_id",
+              "sync_status"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_scan_summaries_user_id_sync_status` ON `${TABLE_NAME}` (`user_id`, `sync_status`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "scan_records",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "scan_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "scan_evaluations",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`scan_id` TEXT NOT NULL, `address` INTEGER NOT NULL, `response_json` TEXT NOT NULL, `vendor` TEXT, `product` TEXT, `version` TEXT, `identification_source` TEXT, PRIMARY KEY(`scan_id`, `address`), FOREIGN KEY(`scan_id`) REFERENCES `scan_records`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "scanId",
+            "columnName": "scan_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "address",
+            "columnName": "address",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "responseJson",
+            "columnName": "response_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "vendor",
+            "columnName": "vendor",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "product",
+            "columnName": "product",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "version",
+            "columnName": "version",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "identificationSource",
+            "columnName": "identification_source",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "scan_id",
+            "address"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_scan_evaluations_scan_id",
+            "unique": false,
+            "columnNames": [
+              "scan_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_scan_evaluations_scan_id` ON `${TABLE_NAME}` (`scan_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "scan_records",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "scan_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'fcd21420254e0d93b1215ff4d065a279')"
+    ]
+  }
+}

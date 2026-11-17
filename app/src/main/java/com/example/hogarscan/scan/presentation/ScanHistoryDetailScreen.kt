@@ -23,7 +23,8 @@ fun ScanHistoryDetailScreen(
     state: ScanDetailUiState,
     onBack: () -> Unit,
     onRetry: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    evaluationContent: @Composable (ScanRecord) -> Unit = {}
 ) {
     Column(
         modifier = modifier
@@ -80,6 +81,7 @@ fun ScanHistoryDetailScreen(
                 }
 
                 ScanResultsPanel(state = record.toDetailState())
+                if (record.status == ScanRecordStatus.COMPLETED) evaluationContent(record)
             }
         }
     }

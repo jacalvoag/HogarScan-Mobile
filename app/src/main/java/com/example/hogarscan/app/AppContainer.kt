@@ -33,10 +33,19 @@ import com.example.hogarscan.auth.domain.repository.AuthRepository
 import com.example.hogarscan.auth.presentation.AuthViewModel
 import com.example.hogarscan.scan.domain.usecase.HistoryOwnerResolver
 import com.example.hogarscan.scan.data.local.HogarScanMigrations.MIGRATION_1_2
+import com.example.hogarscan.scan.data.local.HogarScanMigrations.MIGRATION_2_3
 import com.example.hogarscan.scan.data.local.repository.RoomScanSummaryRepository
 import com.example.hogarscan.scan.domain.repository.ScanSummaryRepository
 import com.example.hogarscan.scan.data.http.HttpScanSummaryDataSource
 import com.example.hogarscan.scan.data.sync.ScanSummarySyncCoordinator
+import com.example.hogarscan.scan.data.sync.DeleteScanSummaries
+import com.example.hogarscan.evaluations.data.DefaultEvaluationGateway
+import com.example.hogarscan.evaluations.data.HttpEvaluationDataSource
+import com.example.hogarscan.evaluations.data.HttpRulesDataSource
+import com.example.hogarscan.evaluations.data.EvaluationWorkflow
+import com.example.hogarscan.evaluations.data.local.RoomEvaluationStore
+import com.example.hogarscan.evaluations.domain.EvaluateCompletedScan
+import com.example.hogarscan.evaluations.presentation.ScanEvaluationViewModel
 
 
 class AppContainer(context: Context) {
@@ -98,13 +107,42 @@ class AppContainer(context: Context) {
         )
     }
 
+    val deleteScanSummaries by lazy {
+        DeleteScanSummaries(sessionApiClient, scanSummaryRepository, sessionStore::updateSummaryGeneration)
+    }
+
+    val evaluationStore by lazy { RoomEvaluationStore(database, sessionStore) }
+    val evaluationRules by lazy { HttpRulesDataSource(apiTransport) }
+
+    private val evaluationGateway by lazy {
+        DefaultEvaluationGateway(HttpEvaluationDataSource(sessionApiClient))
+    }
+
+    val evaluationWorkflow by lazy {
+        EvaluationWorkflow(
+            sessions = sessionReader,
+            history = scanHistoryRepository,
+            evaluator = EvaluateCompletedScan(sessionReader, evaluationGateway),
+            save = evaluationStore::saveCompleted,
+            sync = { session -> scanSummarySyncCoordinator.syncPending(session) }
+        )
+    }
+
+    fun scanEvaluationViewModelFactory(scanId: String, ownerId: String): ViewModelProvider.Factory =
+        viewModelFactory {
+            initializer {
+                ScanEvaluationViewModel(scanId, ownerId, sessionReader, evaluationStore,
+                    evaluationWorkflow, scanSummarySyncCoordinator)
+            }
+        }
+
     private val database: HogarScanDatabase by lazy {
         Room.databaseBuilder(
             appContext,
             HogarScanDatabase::class.java,
             "hogarscan.db"
         )
-            .addMigrations(MIGRATION_1_2)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
             .build()
     }
 

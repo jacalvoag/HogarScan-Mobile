@@ -1,9 +1,9 @@
 # Propuesta de integración de evaluaciones
 
-Esta propuesta requiere acuerdo con José antes de integrarse como contrato
-compartido. Los modelos viven en `evaluations/domain/model` y existe un
-adaptador HTTP aislado. Todavía no están conectados a la navegación ni a
-persistencia y no se han probado contra el despliegue real.
+Esta propuesta documenta el flujo integrado en la rama de evaluaciones para
+revisión conjunta con José. Los resultados se guardan localmente, se encola un
+resumen y se solicita sincronización. Las pruebas con la API autenticada y las
+pruebas instrumentadas de Room en dispositivo siguen pendientes.
 
 ## Entrada y resultado
 
@@ -18,16 +18,14 @@ persistencia y no se han probado contra el despliegue real.
   admite `null` y no se interpreta como `false`.
 - El adaptador traduce `REJECTED` a `REFUSED` y `TIMED_OUT` a `TIMEOUT`.
 
-## Decisiones por acordar
+## Puntos para revisar en conjunto
 
-1. Operaciones y garantías del contrato de persistencia: propietario,
-   revisión, objetivo, sustitución y respuestas tardías tras cambio de sesión.
-2. Si se evalúan todos los objetivos de la revisión y cómo se representa un
-   fallo o cancelación individual antes de declarar la revisión evaluada.
-3. Cuándo congelar y encolar el resumen y cómo se reinicia la sincronización.
-4. Parámetros, eventos y punto de entrada de la pantalla en la navegación.
-5. Versión de backend a integrar y política de espera y errores para consultas
-   que pueden depender de fuentes externas.
+1. Confirmar con José el contrato de persistencia y las garantías frente a
+   cambios de sesión o generación.
+2. La implementación actual evalúa todos los objetivos en secuencia y descarta
+   el lote parcial si alguno falla; confirmar la política de recuperación.
+3. Revisar los puntos de integración del historial, sincronización y borrado.
+4. Validar la API autenticada, sus tiempos de espera y las fuentes externas.
 
 Las solicitudes autenticadas deberán capturar el contexto de sesión y usar
 `SessionApiClient`. Comprobar la sesión no hace atómica la persistencia: la
@@ -51,12 +49,14 @@ contexto local. `HttpEvaluationDataSource` envía la solicitud con la sesión
 capturada y comprueba el propietario; `EvaluationResponseJson` interpreta los
 resultados y las fuentes. `DefaultEvaluationGateway` adapta los resultados al
 contrato del dominio. Los nombres `REFUSED` y `TIMEOUT` se traducen antes
-del envío. Estas piezas están aisladas, no conectadas a `AppContainer`, y aún
-requieren pruebas con Gradle y contra la versión acordada del backend.
+del envío. El flujo de revisión completa está conectado desde el historial;
+todavía requiere pruebas contra la API autenticada y en dispositivos.
 
 `HttpRulesDataSource` consulta `GET /rules` sin credenciales y transforma los
 metadatos publicados a `EvaluationRules`. La versión procede del servidor;
 la aplicación no utiliza estas reglas para ejecutar otro motor de evaluación.
+Desde el detalle de revisión se pueden consultar esos metadatos, declarar una
+identificación por objetivo, evaluar y volver a intentar la sincronización.
 
 ## Evaluación completa y preparación del resumen
 
@@ -70,9 +70,17 @@ hace reintentos; la política de recuperación y persistencia queda por acordar.
 `prepareEvaluatedScanSummary` requiere exactamente una evaluación por objetivo
 con las observaciones, revisión y propietario correspondientes. Calcula las
 direcciones que respondieron y los conteos de hallazgos, conservando la
-generación capturada al inicio de la revisión. No guarda ni encola el resumen:
-la implementación coordinada por José debe comprobar de forma atómica el
-propietario, la sesión y la generación en el momento de persistir y sincronizar.
+generación capturada al inicio de la revisión. `RoomEvaluationStore` guarda las
+evaluaciones y encola el resumen dentro de una transacción, mientras el almacén
+de sesión impide cambiar cuenta o generación durante esa operación local. No se
+mantiene ese bloqueo durante llamadas de red. Si falla la sincronización, los
+datos y el resumen pendiente permanecen disponibles para reintentar.
+
+El borrado de resúmenes del servidor requiere confirmación en la pantalla de
+cuenta y conserva el historial local. La petición utiliza la generación que se
+mostró al confirmar; nunca se repite automáticamente con una nueva generación.
+Una respuesta perdida se presenta como resultado no confirmado y exige que la
+persona compruebe el estado antes de volver a tomar una decisión.
 
 ## Preparación del detalle de hallazgo
 

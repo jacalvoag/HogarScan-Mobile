@@ -5,6 +5,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.hogarscan.scan.data.local.HogarScanMigrations.MIGRATION_1_2
+import com.example.hogarscan.scan.data.local.HogarScanMigrations.MIGRATION_2_3
 import com.example.hogarscan.scan.domain.model.Ipv4Address
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -21,6 +22,32 @@ class HogarScanMigrationTest {
         InstrumentationRegistry.getInstrumentation(),
         HogarScanDatabase::class.java
     )
+
+    @Test
+    fun migrationAddsEvaluationsWithoutDeletingSummaries() {
+        helper.createDatabase("hogarscan-migration-2-3", 2).use { db ->
+            insertLegacyRecord(db, "scan-a", "user:account-a")
+            db.execSQL("""INSERT INTO scan_summaries
+                (scan_id, user_id, summary_generation, started_at_millis, finished_at_millis,
+                 addresses_scanned, addresses_responded, accepted_services, tcp_service_accessible,
+                 protocol_identified, preventive_review, possible_cve_match, insufficient_evidence, sync_status)
+                VALUES ('scan-a', 'account-a', 0, 1000, 2000, 1, 1, 1, 1, 0, 0, 0, 0, 'PENDING')""".trimIndent())
+        }
+        helper.runMigrationsAndValidate("hogarscan-migration-2-3", 3, true, MIGRATION_2_3).use { db ->
+            db.query("SELECT COUNT(*) FROM scan_records").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(1, cursor.getInt(0))
+            }
+            db.query("SELECT COUNT(*) FROM scan_evaluations").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(0, cursor.getInt(0))
+            }
+            db.query("SELECT sync_status FROM scan_summaries WHERE scan_id = 'scan-a'").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("PENDING", cursor.getString(0))
+            }
+        }
+    }
 
     @Test
     fun migrationPreservesHistoryWithoutEnqueuingLegacyRecords() {

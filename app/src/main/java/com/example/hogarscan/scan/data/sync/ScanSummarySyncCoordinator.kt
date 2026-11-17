@@ -45,7 +45,7 @@ class ScanSummarySyncCoordinator(
 ) {
     private val operation = Mutex()
 
-    suspend fun syncPending(): SummarySyncRunResult {
+    suspend fun syncPending(expectedSession: SessionSnapshot? = null): SummarySyncRunResult {
         currentCoroutineContext().ensureActive()
 
         if (!operation.tryLock()) {
@@ -53,7 +53,7 @@ class ScanSummarySyncCoordinator(
         }
 
         return try {
-            processPending()
+            processPending(expectedSession)
         } catch (_: SessionStorageException) {
             SummarySyncRunResult.Failure(
                 ApiResult.SessionStorageFailure
@@ -63,10 +63,16 @@ class ScanSummarySyncCoordinator(
         }
     }
 
-    private suspend fun processPending(): SummarySyncRunResult {
+    private suspend fun processPending(expectedSession: SessionSnapshot?): SummarySyncRunResult {
         val expected =
             (sessions.state.value as? SessionState.Authenticated)?.session
                 ?: return SummarySyncRunResult.SessionUnavailable
+
+        if (expectedSession != null && (
+                expected.contextId != expectedSession.contextId ||
+                    expected.userId != expectedSession.userId ||
+                    expected.summaryGeneration != expectedSession.summaryGeneration
+                )) return SummarySyncRunResult.ContextChanged
 
         if (!isCurrent(expected)) {
             return SummarySyncRunResult.SessionUnavailable

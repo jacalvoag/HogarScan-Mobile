@@ -97,6 +97,18 @@ class PersistentSessionStore(
         }
     }
 
+    /** Protege una operación local breve frente a cambios de cuenta o generación. */
+    suspend fun <T : Any> withCurrentSession(
+        expected: SessionSnapshot,
+        block: suspend () -> T
+    ): T? = mutex.withLock {
+        val current = currentFor(expected) ?: return@withLock null
+        if (current.expiresAtMillis <= nowMillis() ||
+            current.summaryGeneration != expected.summaryGeneration
+        ) return@withLock null
+        block()
+    }
+
     suspend fun updateSummaryGeneration(
         expected: SessionSnapshot,
         generation: Int

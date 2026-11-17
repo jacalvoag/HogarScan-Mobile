@@ -92,6 +92,18 @@ class ScanSummarySyncCoordinatorTest {
     }
 
     @Test
+    fun expectedSessionPreventsSyncingAnotherAccountOrGeneration() = runTest {
+        add(1)
+        state.value = SessionState.Authenticated(account.copy(contextId = "new-context"))
+        assertEquals(SummarySyncRunResult.ContextChanged, coordinator.syncPending(account))
+        assertEquals(0, queue.reads)
+        assertTrue(sent.isEmpty())
+        state.value = SessionState.Authenticated(account.copy(summaryGeneration = 8))
+        assertEquals(SummarySyncRunResult.ContextChanged, coordinator.syncPending(account))
+        assertTrue(sent.isEmpty())
+    }
+
+    @Test
     fun unavailableSessionsDoNotReadOrSendTheQueue() = runTest {
         val original = add(1)
 
