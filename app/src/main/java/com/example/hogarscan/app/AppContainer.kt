@@ -32,6 +32,11 @@ import com.example.hogarscan.auth.data.repository.DefaultAuthRepository
 import com.example.hogarscan.auth.domain.repository.AuthRepository
 import com.example.hogarscan.auth.presentation.AuthViewModel
 import com.example.hogarscan.scan.domain.usecase.HistoryOwnerResolver
+import com.example.hogarscan.scan.data.local.HogarScanMigrations.MIGRATION_1_2
+import com.example.hogarscan.scan.data.local.repository.RoomScanSummaryRepository
+import com.example.hogarscan.scan.domain.repository.ScanSummaryRepository
+import com.example.hogarscan.scan.data.http.HttpScanSummaryDataSource
+import com.example.hogarscan.scan.data.sync.ScanSummarySyncCoordinator
 
 
 class AppContainer(context: Context) {
@@ -80,16 +85,35 @@ class AppContainer(context: Context) {
         )
     }
 
+    val scanSummaryDataSource by lazy {
+        HttpScanSummaryDataSource(sessionApiClient)
+    }
+
+    val scanSummarySyncCoordinator by lazy {
+        ScanSummarySyncCoordinator(
+            repository = scanSummaryRepository,
+            sessions = sessionReader,
+            send = scanSummaryDataSource::send,
+            updateGeneration = sessionStore::updateSummaryGeneration
+        )
+    }
+
     private val database: HogarScanDatabase by lazy {
         Room.databaseBuilder(
             appContext,
             HogarScanDatabase::class.java,
             "hogarscan.db"
-        ).build()
+        )
+            .addMigrations(MIGRATION_1_2)
+            .build()
     }
 
     val scanHistoryRepository: ScanHistoryRepository by lazy {
         RoomScanHistoryRepository(database.scanRecordDao())
+    }
+
+    val scanSummaryRepository: ScanSummaryRepository by lazy {
+        RoomScanSummaryRepository(database.scanSummaryDao())
     }
 
     private val wifiNetworkRepository =
@@ -112,10 +136,10 @@ class AppContainer(context: Context) {
             tcpProbe,
             historyRecorder = ScanHistoryRecorder(
                 repository = scanHistoryRepository,
-                ownerId = {
+                ownerContext = {
                     checkNotNull(historyOwnerResolver.resolve()) {
                         "No se puede iniciar la revisión sin un propietario disponible."
-                    }.ownerId
+                    }
                 }
             )
         )

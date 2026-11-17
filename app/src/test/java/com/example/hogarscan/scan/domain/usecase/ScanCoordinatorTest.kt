@@ -46,7 +46,7 @@ class ScanCoordinatorTest {
         userId = "account-a",
         email = "account-a@example.com",
         expiresAtMillis = 10_000L,
-        summaryGeneration = 0
+        summaryGeneration = 7
     )
 
     private fun sessionRecorder(
@@ -65,10 +65,10 @@ class ScanCoordinatorTest {
 
         return ScanHistoryRecorder(
             repository = history,
-            ownerId = {
+            ownerContext = {
                 checkNotNull(owners.resolve()) {
                     "No se puede iniciar la revisión sin un propietario disponible."
-                }.ownerId
+                }
             },
             nowMillis = { 2_000L },
             newId = { "record-1" }
@@ -88,7 +88,8 @@ class ScanCoordinatorTest {
                         historySession.copy(
                             contextId = "context-b",
                             userId = "account-b",
-                            email = "account-b@example.com"
+                            email = "account-b@example.com",
+                            summaryGeneration = 9
                         )
                     )
                 }
@@ -106,6 +107,7 @@ class ScanCoordinatorTest {
 
             val stored = checkNotNull(history.current)
             assertEquals("user:account-a", stored.ownerId)
+            assertEquals(7, stored.summaryGeneration)
             assertEquals(ScanRecordStatus.COMPLETED, stored.status)
             assertEquals(2, stored.results.size)
         }
@@ -134,8 +136,50 @@ class ScanCoordinatorTest {
 
             val stored = checkNotNull(history.current)
             assertEquals("local:test", stored.ownerId)
+            assertEquals(null, stored.summaryGeneration)
             assertEquals(ScanRecordStatus.COMPLETED, stored.status)
             assertEquals(2, stored.results.size)
+        }
+
+    @Test
+    fun recordedScan_keepsOriginalGenerationWhenItChangesDuringInsert() =
+        runBlocking {
+            val sessionState = MutableStateFlow<SessionState>(
+                SessionState.Authenticated(historySession)
+            )
+
+            val history = MemoryHistory().apply {
+                onInsert = {
+                    sessionState.value = SessionState.Authenticated(
+                        historySession.copy(summaryGeneration = 8)
+                    )
+                }
+            }
+
+            val coordinator = ScanCoordinator(
+                FakeRepository { network },
+                probe(::result),
+                sessionRecorder(history, sessionState)
+            )
+
+            coordinator.execute(
+                request(
+                    config(
+                        end = "192.168.28.2",
+                        ports = setOf(80)
+                    )
+                )
+            ) {}
+
+            val stored = checkNotNull(history.current)
+            assertEquals("user:account-a", stored.ownerId)
+            assertEquals(7, stored.summaryGeneration)
+            assertEquals(ScanRecordStatus.COMPLETED, stored.status)
+
+            val currentSession =
+                (sessionState.value as SessionState.Authenticated).session
+
+            assertEquals(8, currentSession.summaryGeneration)
         }
 
     @Test
@@ -569,8 +613,14 @@ class ScanCoordinatorTest {
             assertEquals(initial.id, scanId)
             assertEquals(initial.ownerId, ownerId)
             current = ScanRecord(
-                initial.id, initial.ownerId, initial.config,
-                initial.startedAtMillis, status, results, finishedAtMillis
+                id = initial.id,
+                ownerId = initial.ownerId,
+                config = initial.config,
+                startedAtMillis = initial.startedAtMillis,
+                status = status,
+                results = results,
+                finishedAtMillis = finishedAtMillis,
+                summaryGeneration = initial.summaryGeneration
             )
         }
 
@@ -583,7 +633,12 @@ class ScanCoordinatorTest {
 
     private fun recorder(history: MemoryHistory) = ScanHistoryRecorder(
         repository = history,
-        ownerId = { "local:test" },
+        ownerContext = {
+            HistoryOwnerContext(
+                ownerId = "local:test",
+                session = null
+            )
+        },
         nowMillis = { 2_000L },
         newId = { "record-1" }
     )

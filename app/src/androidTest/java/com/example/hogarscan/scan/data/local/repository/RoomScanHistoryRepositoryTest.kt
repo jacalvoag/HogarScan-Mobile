@@ -191,7 +191,8 @@ class RoomScanHistoryRepositoryTest {
         id: String,
         status: ScanRecordStatus = ScanRecordStatus.RUNNING,
         fullResults: Boolean = false,
-        ownerId: String = "local:test"
+        ownerId: String = "local:test",
+        summaryGeneration: Int? = null
     ): ScanRecord {
         val target = Ipv4Address.parse("192.168.1.20")
         val results = listOf(
@@ -218,7 +219,49 @@ class RoomScanHistoryRepositoryTest {
                 null
             } else {
                 3_000L
-            }
+            },
+            summaryGeneration = summaryGeneration
         )
     }
+
+    @Test
+    fun preservesGenerationAfterSavingFinishingAndReopeningRepository() =
+        runBlocking {
+            val repository = RoomScanHistoryRepository(dao) { 9_000L }
+
+            val original = record(
+                id = "account-generation",
+                fullResults = true,
+                ownerId = "user:account-a",
+                summaryGeneration = 7
+            )
+
+            repository.insert(original)
+
+            val running = checkNotNull(
+                repository.findById(original.id, original.ownerId)
+            )
+
+            assertEquals(7, running.summaryGeneration)
+            assertEquals(ScanRecordStatus.RUNNING, running.status)
+
+            repository.finish(
+                scanId = original.id,
+                ownerId = original.ownerId,
+                status = ScanRecordStatus.COMPLETED,
+                finishedAtMillis = 12_000L
+            )
+
+            val nextRepository = RoomScanHistoryRepository(dao) { 15_000L }
+
+            val restored = checkNotNull(
+                nextRepository.findById(original.id, original.ownerId)
+            )
+
+            assertEquals(original.ownerId, restored.ownerId)
+            assertEquals(7, restored.summaryGeneration)
+            assertEquals(ScanRecordStatus.COMPLETED, restored.status)
+            assertEquals(12_000L, restored.finishedAtMillis)
+            assertEquals(original.results, restored.results)
+        }
 }
