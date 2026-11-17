@@ -33,6 +33,8 @@ import com.example.hogarscan.auth.domain.repository.AuthRepository
 import com.example.hogarscan.auth.presentation.AuthViewModel
 import com.example.hogarscan.scan.domain.usecase.HistoryOwnerResolver
 import com.example.hogarscan.scan.data.local.HogarScanMigrations.MIGRATION_1_2
+import com.example.hogarscan.scan.data.local.repository.RoomScanSummaryRepository
+import com.example.hogarscan.scan.domain.repository.ScanSummaryRepository
 
 
 class AppContainer(context: Context) {
@@ -93,6 +95,10 @@ class AppContainer(context: Context) {
 
     val scanHistoryRepository: ScanHistoryRepository by lazy {
         RoomScanHistoryRepository(database.scanRecordDao())
+    }
+
+    val scanSummaryRepository: ScanSummaryRepository by lazy {
+        RoomScanSummaryRepository(database.scanSummaryDao())
     }
 
     private val wifiNetworkRepository =
