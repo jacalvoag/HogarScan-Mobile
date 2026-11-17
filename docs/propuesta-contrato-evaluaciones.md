@@ -2,8 +2,9 @@
 
 Esta propuesta documenta el flujo integrado en la rama de evaluaciones para
 revisión conjunta con José. Los resultados se guardan localmente, se encola un
-resumen y se solicita sincronización. Las pruebas con la API autenticada y las
-pruebas instrumentadas de Room en dispositivo siguen pendientes.
+resumen y se solicita sincronización. Las pruebas de Room y migración se han
+ejecutado en un emulador; siguen pendientes las pruebas con la API autenticada
+y los teléfonos físicos.
 
 ## Entrada y resultado
 
@@ -50,7 +51,7 @@ capturada y comprueba el propietario; `EvaluationResponseJson` interpreta los
 resultados y las fuentes. `DefaultEvaluationGateway` adapta los resultados al
 contrato del dominio. Los nombres `REFUSED` y `TIMEOUT` se traducen antes
 del envío. El flujo de revisión completa está conectado desde el historial;
-todavía requiere pruebas contra la API autenticada y en dispositivos.
+todavía requiere pruebas contra la API autenticada y en teléfonos físicos.
 
 `HttpRulesDataSource` consulta `GET /rules` sin credenciales y transforma los
 metadatos publicados a `EvaluationRules`. La versión procede del servidor;
@@ -75,6 +76,8 @@ evaluaciones y encola el resumen dentro de una transacción, mientras el almacé
 de sesión impide cambiar cuenta o generación durante esa operación local. No se
 mantiene ese bloqueo durante llamadas de red. Si falla la sincronización, los
 datos y el resumen pendiente permanecen disponibles para reintentar.
+Una prueba instrumentada ejecuta el flujo con Room y transporte simulado: tras
+un fallo de red, recupera la evaluación y reintenta el mismo resumen sin IP.
 
 El borrado de resúmenes del servidor requiere confirmación en la pantalla de
 cuenta y conserva el historial local. La petición utiliza la generación que se
