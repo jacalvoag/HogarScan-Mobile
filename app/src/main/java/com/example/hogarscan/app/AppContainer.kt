@@ -36,6 +36,7 @@ import com.example.hogarscan.scan.data.local.HogarScanMigrations.MIGRATION_1_2
 import com.example.hogarscan.scan.data.local.repository.RoomScanSummaryRepository
 import com.example.hogarscan.scan.domain.repository.ScanSummaryRepository
 import com.example.hogarscan.scan.data.http.HttpScanSummaryDataSource
+import com.example.hogarscan.scan.data.sync.ScanSummarySyncCoordinator
 
 
 class AppContainer(context: Context) {
@@ -86,6 +87,15 @@ class AppContainer(context: Context) {
 
     val scanSummaryDataSource by lazy {
         HttpScanSummaryDataSource(sessionApiClient)
+    }
+
+    val scanSummarySyncCoordinator by lazy {
+        ScanSummarySyncCoordinator(
+            repository = scanSummaryRepository,
+            sessions = sessionReader,
+            send = scanSummaryDataSource::send,
+            updateGeneration = sessionStore::updateSummaryGeneration
+        )
     }
 
     private val database: HogarScanDatabase by lazy {
