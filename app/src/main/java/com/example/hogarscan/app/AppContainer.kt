@@ -35,6 +35,7 @@ import com.example.hogarscan.scan.domain.usecase.HistoryOwnerResolver
 import com.example.hogarscan.scan.data.local.HogarScanMigrations.MIGRATION_1_2
 import com.example.hogarscan.scan.data.local.repository.RoomScanSummaryRepository
 import com.example.hogarscan.scan.domain.repository.ScanSummaryRepository
+import com.example.hogarscan.scan.data.http.HttpScanSummaryDataSource
 
 
 class AppContainer(context: Context) {
@@ -81,6 +82,10 @@ class AppContainer(context: Context) {
             transport = apiTransport,
             sessions = sessionStore
         )
+    }
+
+    val scanSummaryDataSource by lazy {
+        HttpScanSummaryDataSource(sessionApiClient)
     }
 
     private val database: HogarScanDatabase by lazy {
