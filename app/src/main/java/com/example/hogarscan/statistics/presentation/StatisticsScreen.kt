@@ -13,6 +13,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -21,6 +22,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 @Composable
 fun StatisticsRoute(viewModel: StatisticsViewModel, modifier: Modifier = Modifier) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    // Al volver desde historial o cuenta se solicita una instantánea nueva.
+    LaunchedEffect(viewModel) { viewModel.refresh() }
+    LaunchedEffect(state) {
+        if (state == StatisticsUiState.Idle && viewModel.uiState.value == StatisticsUiState.Idle) {
+            viewModel.refresh()
+        }
+    }
     StatisticsScreen(state, onRefresh = viewModel::refresh, modifier = modifier)
 }
 

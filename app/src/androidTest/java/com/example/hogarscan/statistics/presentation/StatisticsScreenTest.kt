@@ -9,6 +9,12 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.hogarscan.statistics.domain.AccountStatistics
 import com.example.hogarscan.statistics.domain.StatisticsFindingCounts
+import com.example.hogarscan.statistics.domain.StatisticsGateway
+import com.example.hogarscan.statistics.domain.StatisticsOutcome
+import com.example.hogarscan.auth.domain.model.SessionSnapshot
+import com.example.hogarscan.auth.domain.model.SessionState
+import com.example.hogarscan.auth.domain.repository.SessionReader
+import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -31,5 +37,22 @@ class StatisticsScreenTest {
     @Test fun explicaPorQueSeNecesitaSesion() {
         compose.setContent { MaterialTheme { StatisticsScreen(StatisticsUiState.SignInRequired, {}) } }
         compose.onNodeWithText("Inicia sesión para consultar las estadísticas de tu cuenta.").assertIsDisplayed()
+    }
+
+    @Test fun consultaAlEntrarYRecargaCuandoCambiaLaCuenta() {
+        val session = SessionSnapshot("ctx-a", "user-a", "a@example.com", Long.MAX_VALUE, 1)
+        val sessions = object : SessionReader {
+            override val state = MutableStateFlow<SessionState>(SessionState.Authenticated(session))
+        }
+        val gateway = StatisticsGateway { current ->
+            val total = if (current.userId == "user-a") 1L else 2L
+            StatisticsOutcome.Success(AccountStatistics(1, "2026-11-11T00:00:00Z", total, 0, 0, 0,
+                StatisticsFindingCounts(0, 0, 0, 0, 0), emptyList()))
+        }
+        val viewModel = StatisticsViewModel(sessions, gateway, { 1 })
+        compose.setContent { MaterialTheme { StatisticsRoute(viewModel) } }
+        compose.onNodeWithText("Revisiones: 1").assertIsDisplayed()
+        compose.runOnIdle { sessions.state.value = SessionState.Authenticated(session.copy(contextId = "ctx-b", userId = "user-b")) }
+        compose.onNodeWithText("Revisiones: 2").assertIsDisplayed()
     }
 }

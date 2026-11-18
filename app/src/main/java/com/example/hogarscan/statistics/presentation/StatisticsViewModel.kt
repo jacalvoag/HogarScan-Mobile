@@ -3,6 +3,7 @@ package com.example.hogarscan.statistics.presentation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.hogarscan.auth.domain.model.SessionState
+import com.example.hogarscan.auth.domain.model.SessionSnapshot
 import com.example.hogarscan.auth.domain.repository.SessionReader
 import com.example.hogarscan.auth.domain.repository.isCurrentSession
 import com.example.hogarscan.statistics.domain.AccountStatistics
@@ -12,6 +13,7 @@ import com.example.hogarscan.statistics.domain.StatisticsOutcome
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,11 +30,14 @@ sealed interface StatisticsUiState {
 class StatisticsViewModel(
     private val sessions: SessionReader,
     private val gateway: StatisticsGateway,
-    private val nowMillis: () -> Long = System::currentTimeMillis
+    private val nowMillis: () -> Long = System::currentTimeMillis,
+    private val reconcileGeneration: suspend (SessionSnapshot, Int) -> Boolean = { _, _ -> false },
+    private val waitForExpiry: suspend (Long) -> Unit = { delay(it) }
 ) : ViewModel() {
     private val mutableState = MutableStateFlow<StatisticsUiState>(StatisticsUiState.Idle)
     val uiState = mutableState.asStateFlow()
     private var job: Job? = null
+    private var expiryJob: Job? = null
     private var requestId = 0L
     private var identity = sessionKey(sessions.state.value)
 
@@ -45,6 +50,19 @@ class StatisticsViewModel(
                     requestId++
                     job?.cancel()
                     mutableState.value = if (current == null) StatisticsUiState.SignInRequired else StatisticsUiState.Idle
+                }
+                expiryJob?.cancel()
+                val session = (state as? SessionState.Authenticated)?.session
+                if (session != null) {
+                    expiryJob = launch {
+                        val remaining = (session.expiresAtMillis - nowMillis()).coerceAtLeast(0L)
+                        waitForExpiry(remaining)
+                        if (!sessions.isCurrentSession(session, nowMillis())) {
+                            requestId++
+                            job?.cancel()
+                            mutableState.value = StatisticsUiState.SignInRequired
+                        }
+                    }
                 }
             }
         }
@@ -79,8 +97,22 @@ class StatisticsViewModel(
             mutableState.value = when (result) {
                 is StatisticsOutcome.Success -> if (result.statistics.summaryGeneration == current.summaryGeneration) {
                     StatisticsUiState.Data(result.statistics)
+                } else if (result.statistics.summaryGeneration > current.summaryGeneration) {
+                    val reconciled = try { reconcileGeneration(session, result.statistics.summaryGeneration) }
+                    catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { false }
+                    currentCoroutineContext().ensureActive()
+                    if (id != requestId) return@launch
+                    val latest = (sessions.state.value as? SessionState.Authenticated)?.session
+                    if (reconciled && latest != null && latest.userId == session.userId &&
+                        latest.contextId == session.contextId && latest.expiresAtMillis > nowMillis() &&
+                        latest.summaryGeneration == result.statistics.summaryGeneration) {
+                        StatisticsUiState.Idle
+                    } else {
+                        StatisticsUiState.Error("La generación de estadísticas cambió. Actualiza la sesión antes de volver a consultar.")
+                    }
                 } else {
-                    StatisticsUiState.Error("La generación de estadísticas cambió. Actualiza la sesión antes de volver a consultar.")
+                    StatisticsUiState.Error("La generación de estadísticas no coincide. Actualiza la sesión antes de volver a consultar.")
                 }
                 is StatisticsOutcome.Failure -> StatisticsUiState.Error(result.reason.message())
             }

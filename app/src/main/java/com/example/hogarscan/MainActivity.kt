@@ -30,6 +30,8 @@ import androidx.compose.ui.res.stringResource
 import com.example.hogarscan.auth.presentation.AuthRoute
 import com.example.hogarscan.auth.presentation.AuthViewModel
 import com.example.hogarscan.scan.presentation.DeleteSummariesPanel
+import com.example.hogarscan.statistics.presentation.StatisticsRoute
+import com.example.hogarscan.statistics.presentation.StatisticsViewModel
 
 class MainActivity : ComponentActivity() {
 
@@ -74,6 +76,11 @@ class MainActivity : ComponentActivity() {
                                 onClick = { selectedTab = 2 },
                                 text = { Text(stringResource(R.string.auth_account)) }
                             )
+                            Tab(
+                                selected = selectedTab == 3,
+                                onClick = { selectedTab = 3 },
+                                text = { Text("Estadísticas") }
+                            )
                         }
                     }
                 ) { innerPadding ->
@@ -103,6 +110,16 @@ class MainActivity : ComponentActivity() {
                                 Box(Modifier.weight(1f)) { AuthRoute(viewModel = authViewModel) }
                                 DeleteSummariesPanel(container.sessionReader, container.deleteScanSummaries)
                             }
+                        }
+
+                        3 -> {
+                            val statisticsViewModel: StatisticsViewModel = viewModel(
+                                factory = container.statisticsViewModelFactory
+                            )
+                            StatisticsRoute(
+                                viewModel = statisticsViewModel,
+                                modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding)
+                            )
                         }
                     }
                 }

@@ -1,24 +1,25 @@
-# Integración propuesta de estadísticas
+# Integración de estadísticas
 
-El bloque `statistics` está aislado y todavía no está conectado a la navegación
-ni a `AppContainer`. Consume `GET /me/stats` a través de `SessionApiClient` y
+La rama de integración conecta `statistics` a `AppContainer` y a la pestaña
+de estadísticas. Consume `GET /me/stats` a través de `SessionApiClient` y
 no recibe ni conserva tokens. Sus totales cuentan resúmenes sincronizados,
 no el historial local ni dispositivos únicos.
 
-Para la integración coordinada por José:
+Comportamiento para revisar con José:
 
-1. Construir `HttpStatisticsGateway(sessionApiClient)` y proporcionar el
-   gateway y `sessionReader` a `StatisticsViewModel` desde la composición.
-2. Mostrar `StatisticsRoute` en la navegación acordada. La pantalla ofrece una
-   acción para llamar a `refresh`; la integración también puede solicitar una
-   actualización al entrar, tras sincronizar o después de borrar resúmenes.
-3. El ViewModel limpia los datos al cambiar cuenta, contexto o generación.
+1. `AppContainer` construye `HttpStatisticsGateway(sessionApiClient)` y entrega
+   el gateway y `sessionReader` a `StatisticsViewModel`.
+2. `StatisticsRoute` consulta al entrar o volver a la pestaña, y ofrece una
+   acción de actualización manual después de sincronizar o borrar resúmenes.
+3. El ViewModel limpia los datos al cambiar cuenta, contexto o generación, y
+   también cuando vence la sesión mientras la pantalla permanece abierta.
    Descarta respuestas tardías y no muestra una respuesta cuya generación no
    coincida con la sesión. La actualización de generación y el borrado remoto
-   siguen a cargo de la infraestructura compartida; no se intentan aquí.
-4. Ante una generación distinta devuelta por la API, coordinar la actualización
-   de la sesión antes de volver a consultar. No se modifican generaciones ni se
-   reenvían resúmenes antiguos desde este bloque.
+   se realizan mediante la infraestructura compartida.
+4. Ante una generación mayor devuelta por la API se actualiza la sesión y se
+   invalidan pendientes anteriores antes de volver a consultar. Una generación
+   inferior se presenta como error y nunca se adopta automáticamente.
 
-Los tests unitarios usan el cliente simulado. Quedan pendientes las pruebas
-contra la API real, la navegación y las pruebas con dos cuentas en teléfonos.
+Las pruebas unitarias e instrumentadas usan datos y transporte simulados; la
+navegación a la pestaña está integrada. Quedan pendientes las pruebas contra la
+API real con sesión y las pruebas con dos cuentas en teléfonos.

@@ -31,8 +31,8 @@ class StatisticsViewModelTest {
         StatisticsFindingCounts(0, 0, 0, 0, 0), emptyList())
     @Before fun setup() { Dispatchers.setMain(StandardTestDispatcher()) }
     @After fun cleanup() { store.clear(); Dispatchers.resetMain() }
-    private fun vm(gateway: StatisticsGateway) = ViewModelProvider(store, viewModelFactory {
-        initializer { StatisticsViewModel(sessions, gateway, { 1 }) }
+    private fun vm(gateway: StatisticsGateway, reconcile: suspend (SessionSnapshot, Int) -> Boolean = { _, _ -> false }) = ViewModelProvider(store, viewModelFactory {
+        initializer { StatisticsViewModel(sessions, gateway, { 1 }, reconcile, { }) }
     })[StatisticsViewModel::class.java]
 
     @Test fun `muestra cuenta vacia y datos`() = runTest {
@@ -70,5 +70,50 @@ class StatisticsViewModelTest {
         viewModel.refresh(); advanceUntilIdle()
         assertEquals(0, calls)
         assertEquals(StatisticsUiState.SignInRequired, viewModel.uiState.value)
+    }
+
+    @Test fun `al vencer la sesion oculta las estadisticas visibles`() = runTest {
+        val expiry = CompletableDeferred<Unit>()
+        var now = 1L
+        val shortSession = session.copy(expiresAtMillis = 10L)
+        sessions.state.value = SessionState.Authenticated(shortSession)
+        val viewModel = ViewModelProvider(store, viewModelFactory {
+            initializer {
+                StatisticsViewModel(sessions, StatisticsGateway { StatisticsOutcome.Success(empty) },
+                    { now }, waitForExpiry = { expiry.await() })
+            }
+        })[StatisticsViewModel::class.java]
+        viewModel.refresh(); runCurrent()
+        assertTrue(viewModel.uiState.value is StatisticsUiState.Data)
+        now = 10L
+        expiry.complete(Unit); runCurrent()
+        assertEquals(StatisticsUiState.SignInRequired, viewModel.uiState.value)
+    }
+
+    @Test fun `actualiza una generacion remota mayor antes de presentar datos`() = runTest {
+        var reconciliation = 0
+        val updated = empty.copy(summaryGeneration = 2)
+        val viewModel = vm(StatisticsGateway { StatisticsOutcome.Success(updated) }) { expected, generation ->
+            assertEquals(session, expected)
+            reconciliation++
+            sessions.state.value = SessionState.Authenticated(session.copy(summaryGeneration = generation))
+            true
+        }
+        viewModel.refresh(); advanceUntilIdle()
+        assertEquals(1, reconciliation)
+        assertEquals(StatisticsUiState.Idle, viewModel.uiState.value)
+        viewModel.refresh(); advanceUntilIdle()
+        assertEquals(updated, (viewModel.uiState.value as StatisticsUiState.Data).statistics)
+    }
+
+    @Test fun `una generacion remota menor nunca se adopta`() = runTest {
+        var reconciliation = 0
+        val viewModel = vm(StatisticsGateway { StatisticsOutcome.Success(empty.copy(summaryGeneration = 0)) }) { _, _ ->
+            reconciliation++
+            true
+        }
+        viewModel.refresh(); advanceUntilIdle()
+        assertEquals(0, reconciliation)
+        assertTrue(viewModel.uiState.value is StatisticsUiState.Error)
     }
 }

@@ -46,6 +46,10 @@ import com.example.hogarscan.evaluations.data.EvaluationWorkflow
 import com.example.hogarscan.evaluations.data.local.RoomEvaluationStore
 import com.example.hogarscan.evaluations.domain.EvaluateCompletedScan
 import com.example.hogarscan.evaluations.presentation.ScanEvaluationViewModel
+import com.example.hogarscan.statistics.data.HttpStatisticsGateway
+import com.example.hogarscan.statistics.presentation.StatisticsViewModel
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 
 
 class AppContainer(context: Context) {
@@ -113,6 +117,23 @@ class AppContainer(context: Context) {
 
     val evaluationStore by lazy { RoomEvaluationStore(database, sessionStore) }
     val evaluationRules by lazy { HttpRulesDataSource(apiTransport) }
+
+    val statisticsViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
+        initializer {
+            StatisticsViewModel(
+                sessionReader,
+                HttpStatisticsGateway(sessionApiClient),
+                reconcileGeneration = { expected, generation ->
+                    withContext(NonCancellable) {
+                        if (sessionStore.updateSummaryGeneration(expected, generation)) {
+                            scanSummaryRepository.markOlderPendingObsolete(expected.userId, generation)
+                            true
+                        } else false
+                    }
+                }
+            )
+        }
+    }
 
     private val evaluationGateway by lazy {
         DefaultEvaluationGateway(HttpEvaluationDataSource(sessionApiClient))
