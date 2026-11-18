@@ -31,7 +31,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 @Composable
-fun ScanEvaluationPanel(viewModel: ScanEvaluationViewModel, record: ScanRecord, rulesDataSource: HttpRulesDataSource? = null) {
+fun ScanEvaluationPanel(viewModel: ScanEvaluationViewModel, record: ScanRecord, rulesDataSource: HttpRulesDataSource? = null, onFindingSelected: (FindingDetail) -> Unit = {}) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val identifications = remember(record.id) { mutableStateMapOf<Ipv4Address, DeclaredIdentification>() }
     var address by remember(record.id) { mutableStateOf("") }
@@ -110,7 +110,9 @@ fun ScanEvaluationPanel(viewModel: ScanEvaluationViewModel, record: ScanRecord, 
                     OutlinedButton(onClick = viewModel::retrySync) { Text("Reintentar sincronización") }
                     current.evaluations.forEach { evaluation ->
                         Text("Objetivo: ${evaluation.input.address}")
-                        EvaluationResultPanel(evaluation.result)
+                        EvaluationResultPanel(evaluation.result, onFindingClick = { index ->
+                            evaluation.result.findingDetail(index)?.let(onFindingSelected)
+                        })
                     }
                 }
             }

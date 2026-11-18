@@ -90,6 +90,7 @@ dependencies {
     ksp(libs.androidx.room.compiler)
     implementation(libs.okhttp)
     implementation(libs.moshi)
+    implementation(libs.androidsvg)
     coreLibraryDesugaring(libs.desugar.jdk.libs)
     androidTestImplementation(libs.androidx.room.testing)
 

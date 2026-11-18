@@ -94,9 +94,10 @@ Una coincidencia CVE solo se asocia con su identificador correspondiente; KEV
 desconocido no se muestra como negativo. El índice se utiliza únicamente dentro
 de esa respuesta y no es identificador permanente.
 
-La vista de detalle del Figma contiene iconos SVG y fuentes que el proyecto no
-tiene configurados. Su integración visual y navegación siguen pendientes de
-acordar con José, ya que el soporte de recursos o dependencias puede afectar
-archivos compartidos. El texto de ejemplo del diseño no debe utilizarse como
-evidencia real: el escaneo TCP actual no identifica por sí solo HTTP ni produce
-porcentajes de certeza o vulnerabilidades confirmadas.
+La vista de detalle se abre desde cada hallazgo de la revisión y utiliza los
+iconos SVG originales del diseño. Presenta únicamente los datos y estados de
+fuentes disponibles en el resultado; sus enlaces NVD se validan antes de abrirse.
+El texto de ejemplo del diseño no se utiliza como evidencia real: el escaneo
+TCP actual no identifica por sí solo HTTP ni produce porcentajes de certeza o
+vulnerabilidades confirmadas. Las fuentes tipográficas del diseño y la revisión
+visual de las demás pantallas permanecen pendientes.

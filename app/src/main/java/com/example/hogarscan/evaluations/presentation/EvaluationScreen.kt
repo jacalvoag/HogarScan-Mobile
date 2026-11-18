@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -110,15 +111,16 @@ fun EvaluationScreen(
 }
 
 @Composable
-fun EvaluationResultPanel(result: EvaluationResult, modifier: Modifier = Modifier) {
+fun EvaluationResultPanel(result: EvaluationResult, modifier: Modifier = Modifier, onFindingClick: ((Int) -> Unit)? = null) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Resultados", style = MaterialTheme.typography.titleLarge)
         Text("Reglas: ${result.rulesetVersion} · Evaluado: ${result.evaluatedAt}")
         Text("NVD: ${result.sources.nvd.description()} · KEV: ${result.sources.kev.description()}")
         result.sources.checkedAt?.let { Text("Fuentes consultadas: $it") }
         if (result.findings.isEmpty()) Text("La evaluación no devolvió hallazgos.")
-        result.findings.forEach { finding ->
-            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+        result.findings.forEachIndexed { index, finding ->
+            val cardModifier = if (onFindingClick == null) Modifier else Modifier.clickable(onClickLabel = "Ver detalle del hallazgo") { onFindingClick(index) }
+            OutlinedCard(modifier = cardModifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(finding.title, style = MaterialTheme.typography.titleMedium)
                     Text("Categoría: ${finding.category.description()} · Prioridad: ${finding.priority.description()} · Certeza: ${finding.confidence.description()}")
@@ -128,6 +130,7 @@ fun EvaluationResultPanel(result: EvaluationResult, modifier: Modifier = Modifie
                     Text("Limitación: ${finding.limitation}")
                     Text("Regla: ${finding.ruleId}")
                     finding.cve?.let { Text("Coincidencia posible: $it") }
+                    if (onFindingClick != null) Text("Ver detalle")
                 }
             }
         }
