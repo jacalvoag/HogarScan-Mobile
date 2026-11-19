@@ -3,6 +3,7 @@ package com.example.hogarscan.scan.presentation
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.hogarscan.evaluations.presentation.FindingDetail
 import com.example.hogarscan.auth.domain.model.SessionState
 import com.example.hogarscan.auth.domain.repository.SessionReader
 import com.example.hogarscan.scan.domain.model.ScanRecord
@@ -53,6 +54,22 @@ class ScanHistoryViewModel(
     private val _detailState =
         MutableStateFlow<ScanDetailUiState>(ScanDetailUiState.Closed)
     val detailState: StateFlow<ScanDetailUiState> = _detailState.asStateFlow()
+
+    // El ViewModel conserva el nivel de navegación durante una recreación de la Activity.
+    // El contenido del hallazgo no se serializa en el Bundle de estado de Android.
+    private val _selectedFinding = MutableStateFlow<FindingDetail?>(null)
+    val selectedFinding: StateFlow<FindingDetail?> = _selectedFinding.asStateFlow()
+
+    fun openFinding(scanId: String, ownerId: String, detail: FindingDetail) {
+        val record = (_detailState.value as? ScanDetailUiState.Loaded)?.record ?: return
+        if (record.id == scanId && record.ownerId == ownerId) {
+            _selectedFinding.value = detail
+        }
+    }
+
+    fun closeFinding() {
+        _selectedFinding.value = null
+    }
 
     data class DeletionState(val confirmation: ScanRecord? = null, val pending: Boolean = false, val message: String? = null)
     private val mutableDeletion = MutableStateFlow(DeletionState())
@@ -205,6 +222,7 @@ class ScanHistoryViewModel(
     }
 
     private fun loadDetail(scanId: String, expectedOwner: String?) {
+        closeFinding()
         restorationPending = false
         detailJob?.cancel()
 
@@ -274,6 +292,7 @@ class ScanHistoryViewModel(
     }
 
     fun closeDetail() {
+        closeFinding()
         restorationPending = false
         detailJob?.cancel()
         detailJob = null

@@ -18,10 +18,6 @@ import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -35,7 +31,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.lifecycle.ViewModelProvider
 import com.example.hogarscan.evaluations.presentation.ScanEvaluationPanel
 import com.example.hogarscan.evaluations.presentation.ScanEvaluationViewModel
-import com.example.hogarscan.evaluations.presentation.FindingDetail
 import com.example.hogarscan.evaluations.presentation.FindingDetailScreen
 
 @Composable
@@ -46,6 +41,7 @@ fun ScanHistoryRoute(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val detailState by viewModel.detailState.collectAsStateWithLifecycle()
+    val selectedFinding by viewModel.selectedFinding.collectAsStateWithLifecycle()
     val deletion by viewModel.deletion.collectAsStateWithLifecycle()
     if (deletion.confirmation != null) {
         AlertDialog(onDismissRequest = viewModel::cancelDeletion,
@@ -55,22 +51,14 @@ fun ScanHistoryRoute(
             confirmButton = { TextButton(onClick = viewModel::confirmDeletion) { Text("Borrar revisión local") } })
     }
     val listState = rememberLazyListState()
-    var selectedFinding by remember { mutableStateOf<SelectedFinding?>(null) }
-    val loaded = detailState as? ScanDetailUiState.Loaded
-    val visibleFinding = selectedFinding?.takeIf { selected ->
-        loaded != null && loaded.record.id == selected.scanId && loaded.record.ownerId == selected.ownerId
-    }
-    LaunchedEffect(detailState) {
-        if (visibleFinding == null) selectedFinding = null
-    }
 
     BackHandler(
         enabled = detailState != ScanDetailUiState.Closed,
-        onBack = { if (visibleFinding != null) selectedFinding = null else viewModel.closeDetail() }
+        onBack = { if (selectedFinding != null) viewModel.closeFinding() else viewModel.closeDetail() }
     )
 
-    if (visibleFinding != null) {
-        FindingDetailScreen(visibleFinding.detail, onBack = { selectedFinding = null }, modifier = modifier)
+    if (selectedFinding != null) {
+        FindingDetailScreen(requireNotNull(selectedFinding), onBack = viewModel::closeFinding, modifier = modifier)
     } else if (detailState == ScanDetailUiState.Closed) {
         ScanHistoryScreen(
             state = state,
@@ -97,15 +85,13 @@ fun ScanHistoryRoute(
                         factory = evaluationFactory(record.id, record.ownerId)
                     )
                     ScanEvaluationPanel(evaluationViewModel, record) { finding ->
-                        selectedFinding = SelectedFinding(record.id, record.ownerId, finding)
+                        viewModel.openFinding(record.id, record.ownerId, finding)
                     }
                 }
             }
         )
     }
 }
-
-private data class SelectedFinding(val scanId: String, val ownerId: String, val detail: FindingDetail)
 
 @Composable
 private fun ScanHistoryScreen(
