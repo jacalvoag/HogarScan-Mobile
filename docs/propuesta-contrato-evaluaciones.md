@@ -11,7 +11,7 @@ simulado se distinguen de las pruebas contra la API real y en teléfonos físico
   puertos distintos de los permitidos. No se envían IP ni identificadores
   locales, duración, banners o evidencia de protocolo que no se obtuvo.
 - La identificación opcional conserva fabricante, producto, versión y
-  procedencia declarados por la persona usuaria.
+  procedencia manual o anunciada por el servicio; esta última incluye el puerto.
 - El resultado conserva la versión de reglas devuelta por la evaluación,
   fecha, estados de fuentes, hallazgos y coincidencias posibles. `in_kev`
   admite `null` y no se interpreta como `false`.
@@ -120,3 +120,11 @@ El texto de ejemplo del diseño no se utiliza como evidencia real: el escaneo
 TCP actual no identifica por sí solo HTTP ni produce porcentajes de certeza o
 vulnerabilidades confirmadas. Las fuentes tipográficas del diseño y la revisión
 visual de las demás pantallas permanecen pendientes.
+
+## Evidencia observada e identidades anunciadas
+
+El móvil incorpora protocolos normalizados y SERVICE_RESPONSE con service_port.
+Una identidad anunciada no certifica producto ni versión. Una identidad inequívoca
+se usa automáticamente; varias requieren selección explícita. Se conservan
+identidades manuales como procedencia independiente. Véase
+[alcance y validación](alcance-original-y-validacion.md).
