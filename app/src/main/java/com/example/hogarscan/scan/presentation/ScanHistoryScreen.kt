@@ -34,14 +34,12 @@ import com.example.hogarscan.evaluations.presentation.ScanEvaluationPanel
 import com.example.hogarscan.evaluations.presentation.ScanEvaluationViewModel
 import com.example.hogarscan.evaluations.presentation.FindingDetail
 import com.example.hogarscan.evaluations.presentation.FindingDetailScreen
-import com.example.hogarscan.evaluations.data.HttpRulesDataSource
 
 @Composable
 fun ScanHistoryRoute(
     viewModel: ScanHistoryViewModel,
     modifier: Modifier = Modifier,
-    evaluationFactory: ((String, String) -> ViewModelProvider.Factory)? = null,
-    rulesDataSource: HttpRulesDataSource? = null
+    evaluationFactory: ((String, String) -> ViewModelProvider.Factory)? = null
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val detailState by viewModel.detailState.collectAsStateWithLifecycle()
@@ -82,7 +80,7 @@ fun ScanHistoryRoute(
                         key = "scan-evaluation:${record.id}",
                         factory = evaluationFactory(record.id, record.ownerId)
                     )
-                    ScanEvaluationPanel(evaluationViewModel, record, rulesDataSource) { finding ->
+                    ScanEvaluationPanel(evaluationViewModel, record) { finding ->
                         selectedFinding = SelectedFinding(record.id, record.ownerId, finding)
                     }
                 }

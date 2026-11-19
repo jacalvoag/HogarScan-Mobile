@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.ui.res.stringResource
 import com.example.hogarscan.auth.presentation.AuthRoute
 import com.example.hogarscan.auth.presentation.AuthViewModel
+import com.example.hogarscan.scan.presentation.DeleteSummariesViewModel
 import com.example.hogarscan.scan.presentation.DeleteSummariesPanel
 import com.example.hogarscan.statistics.presentation.StatisticsRoute
 import com.example.hogarscan.statistics.presentation.StatisticsViewModel
@@ -100,15 +101,17 @@ class MainActivity : ComponentActivity() {
                             ScanHistoryRoute(
                                 viewModel = historyViewModel,
                                 modifier = Modifier.padding(innerPadding),
-                                evaluationFactory = container::scanEvaluationViewModelFactory,
-                                rulesDataSource = container.evaluationRules
+                                evaluationFactory = container::scanEvaluationViewModelFactory
                             )
                         }
 
                         2 -> {
                             Column(Modifier.padding(innerPadding).consumeWindowInsets(innerPadding)) {
                                 Box(Modifier.weight(1f)) { AuthRoute(viewModel = authViewModel) }
-                                DeleteSummariesPanel(container.sessionReader, container.deleteScanSummaries)
+                                val deleteViewModel: DeleteSummariesViewModel = viewModel(
+                                    factory = container.deleteSummariesViewModelFactory
+                                )
+                                DeleteSummariesPanel(deleteViewModel)
                             }
                         }
 

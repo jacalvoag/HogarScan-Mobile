@@ -31,6 +31,12 @@ sealed interface ScanEvaluationUiState {
     data class Error(val message: String) : ScanEvaluationUiState
 }
 
+data class EvaluationRulesUiState(
+    val loading: Boolean = false,
+    val rules: EvaluationRules? = null,
+    val error: Boolean = false
+)
+
 class ScanEvaluationViewModel(
     private val scanId: String,
     private val ownerId: String,
@@ -42,8 +48,11 @@ class ScanEvaluationViewModel(
     val uiState = mutableState.asStateFlow()
     private val mutableIdentification = MutableStateFlow(ScanIdentificationState())
     val identification = mutableIdentification.asStateFlow()
+    private val mutableRules = MutableStateFlow(EvaluationRulesUiState())
+    val rules = mutableRules.asStateFlow()
     private var job: Job? = null
     private var sequence = 0L
+    private var rulesJob: Job? = null
     private var identity = identity(sessions.state.value)
 
     init {
@@ -55,6 +64,8 @@ class ScanEvaluationViewModel(
                     sequence++
                     job?.cancel()
                     mutableIdentification.value = ScanIdentificationState()
+                    rulesJob?.cancel()
+                    mutableRules.value = EvaluationRulesUiState()
                     mutableState.value = ScanEvaluationUiState.Error("La sesión cambió. Vuelve al historial para continuar.")
                 }
             }
@@ -83,6 +94,22 @@ class ScanEvaluationViewModel(
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { if (id == sequence && current(session)) mutableState.value = ScanEvaluationUiState.Error("No se pudieron cargar las evaluaciones.") }
+        }
+    }
+
+    fun loadRules() {
+        if (mutableRules.value.loading) return
+        val id = identity
+        mutableRules.value = mutableRules.value.copy(loading = true, error = false)
+        rulesJob = viewModelScope.launch {
+            try {
+                val result = actions.rules()
+                currentCoroutineContext().ensureActive()
+                if (identity == id) mutableRules.value = EvaluationRulesUiState(rules = result, error = result == null)
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                if (identity == id) mutableRules.value = EvaluationRulesUiState(error = true)
+            }
         }
     }
 

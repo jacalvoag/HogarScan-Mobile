@@ -71,12 +71,20 @@ class ScanEvaluationViewModelTest {
     private var summaryStatus = SummarySyncStatus.PENDING
     private var retryResult = EvaluationSyncResult.PROCESSED
     private var retryCalls = 0
+    private var rulesCalls = 0
+    private var rulesResponse: EvaluationRules? = null
+    private var rulesWait: CompletableDeferred<Unit>? = null
     private fun vm(gateway: EvaluationGateway): ScanEvaluationViewModel {
         val evaluator = EvaluateCompletedScan(sessions, gateway, { 1 })
         val workflow = EvaluationWorkflow(sessions, history, evaluator, storage::saveCompleted, { sync.syncPending(it) }, { 1 })
         val adapter = DefaultScanEvaluationActions(storage, workflow, sync, { _, _ -> summaryStatus },
             HttpRulesDataSource(ApiTransport { ApiResult.NetworkFailure }))
         val actions = object : ScanEvaluationActions by adapter {
+            override suspend fun rules(): EvaluationRules? {
+                rulesCalls++
+                rulesWait?.await()
+                return rulesResponse
+            }
             override suspend fun sync(expected: SessionSnapshot): EvaluationSyncResult {
                 retryCalls++
                 return retryResult
@@ -168,6 +176,21 @@ class ScanEvaluationViewModelTest {
         viewModel.load(); advanceUntilIdle()
         assertTrue((viewModel.uiState.value as ScanEvaluationUiState.Saved).message.contains("generación anterior"))
         assertFalse((viewModel.uiState.value as ScanEvaluationUiState.Saved).canRetrySync)
+    }
+
+    @Test fun `consulta de reglas conserva estado y no duplica la solicitud`() = runTest {
+        val gateway = EvaluationGateway { _, _ -> EvaluationOutcome.Success(response) }
+        val viewModel = vm(gateway)
+        advanceUntilIdle()
+        rulesWait = CompletableDeferred()
+        rulesResponse = EvaluationRules("1", "2026-11-11T00:00:00Z", emptySet(), 6, "Alcance TCP", 254, setOf(80))
+        viewModel.loadRules(); runCurrent()
+        assertTrue(viewModel.rules.value.loading)
+        vm(gateway).loadRules(); runCurrent()
+        assertEquals(1, rulesCalls)
+        rulesWait!!.complete(Unit); advanceUntilIdle()
+        assertEquals(rulesResponse, viewModel.rules.value.rules)
+        assertFalse(viewModel.rules.value.loading)
     }
 
     @Test fun `cambio de cuenta no publica ni guarda respuesta tardia`() = runTest {

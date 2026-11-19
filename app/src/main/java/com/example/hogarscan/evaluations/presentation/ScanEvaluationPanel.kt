@@ -12,51 +12,26 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.hogarscan.evaluations.domain.model.EvaluationRules
-import com.example.hogarscan.evaluations.data.HttpRulesDataSource
-import com.example.hogarscan.evaluations.data.RulesRemoteResult
 import com.example.hogarscan.evaluations.domain.model.IdentificationSource
 import com.example.hogarscan.scan.domain.model.ScanRecord
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.launch
 
 @Composable
-fun ScanEvaluationPanel(viewModel: ScanEvaluationViewModel, record: ScanRecord, rulesDataSource: HttpRulesDataSource? = null, onFindingSelected: (FindingDetail) -> Unit = {}) {
+fun ScanEvaluationPanel(viewModel: ScanEvaluationViewModel, record: ScanRecord, onFindingSelected: (FindingDetail) -> Unit = {}) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val form by viewModel.identification.collectAsStateWithLifecycle()
-    var rules by remember(record.id) { mutableStateOf<EvaluationRules?>(null) }
-    var rulesLoading by remember(record.id) { mutableStateOf(false) }
-    var rulesError by remember(record.id) { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
+    val rulesState by viewModel.rules.collectAsStateWithLifecycle()
 
     OutlinedCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Evaluación de la revisión")
-            if (rulesDataSource != null) {
-                OutlinedButton(enabled = !rulesLoading, onClick = {
-                    rulesLoading = true
-                    rulesError = false
-                    scope.launch {
-                        try {
-                            when (val result = rulesDataSource.getRules()) {
-                                is RulesRemoteResult.Success -> rules = result.rules
-                                is RulesRemoteResult.Failure -> rulesError = true
-                            }
-                        } catch (cancelled: CancellationException) { throw cancelled }
-                        catch (_: Exception) { rulesError = true }
-                        finally { rulesLoading = false }
-                    }
-                }) { Text(if (rulesLoading) "Consultando reglas…" else "Consultar reglas publicadas") }
-                if (rulesError) Text("No se pudieron consultar las reglas.")
-                rules?.let { Text("Versión: ${it.rulesetVersion}. ${it.caveat}") }
+            OutlinedButton(enabled = !rulesState.loading, onClick = viewModel::loadRules) {
+                Text(if (rulesState.loading) "Consultando reglas…" else "Consultar reglas publicadas")
             }
+            if (rulesState.error) Text("No se pudieron consultar las reglas.")
+            rulesState.rules?.let { Text("Versión: ${it.rulesetVersion}. ${it.caveat}") }
             when (val current = state) {
                 ScanEvaluationUiState.Loading -> CircularProgressIndicator()
                 ScanEvaluationUiState.Ready -> {
