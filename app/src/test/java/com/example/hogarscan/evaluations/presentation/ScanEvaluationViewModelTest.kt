@@ -45,8 +45,9 @@ class ScanEvaluationViewModelTest {
         listOf(ProbeResult(address, 80, ProbeOutcome.ACCEPTED, 1)), 2, 1)
     private val response = EvaluationResult("1", "2026-11-11T00:00:00Z",
         EvaluationSources(SourceState.NOT_QUERIED, SourceState.NOT_QUERIED, null), emptyList(), emptyList())
+    private var historyRecord = scan
     private val history = object : ScanHistoryRepository {
-        override suspend fun findById(scanId: String, ownerId: String) = scan.takeIf { it.id == scanId && it.ownerId == ownerId }
+        override suspend fun findById(scanId: String, ownerId: String) = historyRecord.takeIf { it.id == scanId && it.ownerId == ownerId }
         override suspend fun insert(record: ScanRecord) = Unit
         override fun observeByOwner(ownerId: String): Flow<List<ScanRecordSummary>> = emptyFlow()
         override suspend fun appendResult(scanId: String, ownerId: String, result: ProbeResult) = Unit
@@ -103,10 +104,15 @@ class ScanEvaluationViewModelTest {
     @After fun cleanup() { lifecycle.clear(); Dispatchers.resetMain() }
 
     @Test fun `guarda y muestra evaluaciones del propietario`() = runTest {
-        val viewModel = vm(EvaluationGateway { _, _ -> EvaluationOutcome.Success(response) })
+        val release = CompletableDeferred<Unit>()
+        val viewModel = vm(EvaluationGateway { _, _ -> release.await(); EvaluationOutcome.Success(response) })
         advanceUntilIdle()
         assertEquals(ScanEvaluationUiState.Ready, viewModel.uiState.value)
-        viewModel.start(); advanceUntilIdle()
+        viewModel.start()
+        assertEquals(ScanEvaluationUiState.Preparing, viewModel.uiState.value)
+        runCurrent()
+        assertEquals(ScanEvaluationUiState.Running(0, 1), viewModel.uiState.value)
+        release.complete(Unit); advanceUntilIdle()
         val state = viewModel.uiState.value as ScanEvaluationUiState.Saved
         assertEquals(response, state.evaluations.single().result)
         assertEquals(1, storage.saved.size)
@@ -114,8 +120,10 @@ class ScanEvaluationViewModelTest {
 
     @Test fun `formulario e identificaciones sobreviven al recuperar el mismo ViewModel`() = runTest {
         var sent: DeclaredIdentification? = null
+        val release = CompletableDeferred<Unit>()
         val gateway = EvaluationGateway { input, _ ->
             sent = input.identification
+            release.await()
             EvaluationOutcome.Success(response)
         }
         val first = vm(gateway)
@@ -127,8 +135,56 @@ class ScanEvaluationViewModelTest {
         recreated.addIdentification(config.targetAddresses)
         assertEquals("Acme", recreated.identification.value.identifications[address]?.vendor)
         assertFalse(recreated.identification.value.unfinished)
-        recreated.start(); advanceUntilIdle()
+        recreated.start(); runCurrent()
+        assertEquals(ScanEvaluationUiState.Running(0, 1), recreated.uiState.value)
+        assertTrue(storage.saved.isEmpty())
+        release.complete(Unit); advanceUntilIdle()
         assertEquals("Router", sent?.product)
+    }
+
+    @Test fun `identidad automatica muestra total mientras espera fuentes publicas`() = runTest {
+        val release = CompletableDeferred<Unit>()
+        historyRecord = ScanRecord(scan.id, scan.ownerId, config, scan.startedAtMillis, scan.status,
+            listOf(ProbeResult(address, 80, ProbeOutcome.ACCEPTED, 1,
+                ServiceEvidence(ServiceProtocol.HTTP, "apache", "http_server", "2.4.49"))),
+            scan.finishedAtMillis, scan.summaryGeneration)
+        val viewModel = vm(EvaluationGateway { input, _ ->
+            assertEquals(IdentificationSource.SERVICE_RESPONSE, input.identification?.source)
+            assertEquals(80, input.identification?.servicePort)
+            release.await()
+            EvaluationOutcome.Success(response)
+        })
+        advanceUntilIdle()
+        viewModel.start(); runCurrent()
+        assertEquals(ScanEvaluationUiState.Running(0, 1), viewModel.uiState.value)
+        assertTrue(storage.saved.isEmpty())
+        release.complete(Unit); advanceUntilIdle()
+        assertEquals(1, (viewModel.uiState.value as ScanEvaluationUiState.Saved).evaluations.size)
+    }
+
+    @Test fun `cuenta todos los objetivos y cancelar descarta progreso tardio`() = runTest {
+        val second = Ipv4Address.parse("192.168.1.3")
+        historyRecord = ScanRecord(scan.id, scan.ownerId,
+            ScanConfig(config.networkScope, address, second, config.ports.toSet()),
+            scan.startedAtMillis, scan.status,
+            scan.results + ProbeResult(second, 80, ProbeOutcome.ACCEPTED, 1),
+            scan.finishedAtMillis, scan.summaryGeneration)
+        val firstReply = CompletableDeferred<Unit>()
+        val secondReply = CompletableDeferred<Unit>()
+        val viewModel = vm(EvaluationGateway { input, _ ->
+            if (input.address == address) firstReply.await()
+            else withContext(NonCancellable) { secondReply.await() }
+            EvaluationOutcome.Success(response)
+        })
+        advanceUntilIdle()
+        viewModel.start(); runCurrent()
+        assertEquals(ScanEvaluationUiState.Running(0, 2), viewModel.uiState.value)
+        firstReply.complete(Unit); runCurrent()
+        assertEquals(ScanEvaluationUiState.Running(1, 2), viewModel.uiState.value)
+        viewModel.cancel(); runCurrent()
+        secondReply.complete(Unit); advanceUntilIdle()
+        assertEquals(ScanEvaluationUiState.Ready, viewModel.uiState.value)
+        assertTrue(storage.saved.isEmpty())
     }
 
     @Test fun `cambiar de cuenta limpia el formulario y las identificaciones`() = runTest {
@@ -207,6 +263,7 @@ class ScanEvaluationViewModelTest {
         statusWait = CompletableDeferred()
         viewModel.start(); runCurrent()
         assertEquals(1, storage.saved.size)
+        assertEquals(ScanEvaluationUiState.Running(1, 1), viewModel.uiState.value)
         sessions.state.value = SessionState.Authenticated(session.copy(contextId = "other", userId = "other"))
         runCurrent(); statusWait!!.complete(Unit); advanceUntilIdle()
         assertTrue(viewModel.uiState.value is ScanEvaluationUiState.Error)
