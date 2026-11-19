@@ -66,12 +66,7 @@ fun ScanEvaluationPanel(viewModel: ScanEvaluationViewModel, record: ScanRecord, 
                         OutlinedButton(onClick = viewModel::retrySync) { Text("Reintentar sincronización") }
                     }
                     OutlinedButton(onClick = viewModel::load) { Text("Actualizar estado") }
-                    current.evaluations.forEach { evaluation ->
-                        Text("Objetivo: ${evaluation.input.address}")
-                        EvaluationResultPanel(evaluation.result, onFindingClick = { index ->
-                            evaluation.result.findingDetail(index)?.let(onFindingSelected)
-                        })
-                    }
+                    ScanEvaluationResultsList(current.evaluations, onFindingSelected)
                 }
             }
         }
