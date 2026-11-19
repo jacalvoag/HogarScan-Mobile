@@ -26,7 +26,12 @@ import kotlinx.coroutines.launch
 sealed interface ScanEvaluationUiState {
     data object Loading : ScanEvaluationUiState
     data object Ready : ScanEvaluationUiState
-    data class Running(val completed: Int, val total: Int) : ScanEvaluationUiState
+    data object Preparing : ScanEvaluationUiState
+    data class Running(val completed: Int, val total: Int) : ScanEvaluationUiState {
+        init {
+            require(total > 0 && completed in 0..total)
+        }
+    }
     data class Saved(val evaluations: List<TargetEvaluation>, val message: String, val canRetrySync: Boolean = false) : ScanEvaluationUiState
     data class Error(val message: String) : ScanEvaluationUiState
 }
@@ -157,7 +162,7 @@ class ScanEvaluationViewModel(
         }
         val id = ++sequence
         job?.cancel()
-        mutableState.value = ScanEvaluationUiState.Running(0, 0)
+        mutableState.value = ScanEvaluationUiState.Preparing
         job = viewModelScope.launch {
             try {
                 val outcome = actions.evaluate(scanId, session, identifications.toMap()) { done, total ->

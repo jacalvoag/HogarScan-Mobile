@@ -40,20 +40,31 @@ class EvaluateCompletedScanTest {
         }, { 1 })
         val outcome = evaluator.run(scan, session, onProgress = { done, total -> progress.add(done to total) })
         assertEquals(config.targetAddresses, seen)
-        assertEquals(listOf(1 to 2, 2 to 2), progress)
+        assertEquals(listOf(0 to 2, 1 to 2, 2 to 2), progress)
         val completed = outcome as ScanEvaluationOutcome.Completed
         assertEquals(2, prepareEvaluatedScanSummary(scan, completed.evaluations, session).acceptedServices)
     }
 
     @Test fun `interrumpe ante fallo sin declarar revision evaluada`() = runTest {
         var calls = 0
+        val progress = mutableListOf<Pair<Int, Int>>()
         val evaluator = EvaluateCompletedScan(sessions, EvaluationGateway { _, _ ->
             calls++
             if (calls == 2) EvaluationOutcome.Failure(EvaluationFailure.TIMEOUT) else EvaluationOutcome.Success(result)
         }, { 1 })
-        val outcome = evaluator.run(scan, session) as ScanEvaluationOutcome.Failed
+        val outcome = evaluator.run(scan, session, onProgress = { done, total -> progress.add(done to total) }) as ScanEvaluationOutcome.Failed
         assertEquals(config.targetAddresses[1], outcome.address)
         assertEquals(EvaluationFailure.TIMEOUT, outcome.reason)
+        assertEquals(listOf(0 to 2, 1 to 2), progress)
+    }
+
+    @Test fun `sesion anterior no publica progreso ni inicia solicitudes`() = runTest {
+        sessions.state.value = SessionState.Guest
+        val evaluator = EvaluateCompletedScan(sessions, EvaluationGateway { _, _ -> error("No request expected") }, { 1 })
+        val progress = mutableListOf<Pair<Int, Int>>()
+        val outcome = evaluator.run(scan, session, onProgress = { done, total -> progress.add(done to total) })
+        assertEquals(ScanEvaluationOutcome.SessionChanged, outcome)
+        assertTrue(progress.isEmpty())
     }
 
     @Test fun `cambio de generacion mientras espera descarta la respuesta`() = runTest {

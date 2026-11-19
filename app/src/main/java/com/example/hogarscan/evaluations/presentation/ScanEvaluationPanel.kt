@@ -53,9 +53,17 @@ fun ScanEvaluationPanel(viewModel: ScanEvaluationViewModel, record: ScanRecord, 
                     if (form.unfinished) Text("Agrega o limpia los datos escritos antes de comenzar.")
                     Button(onClick = { viewModel.start() }, enabled = !form.unfinished) { Text("Evaluar revisión") }
                 }
+                ScanEvaluationUiState.Preparing -> {
+                    CircularProgressIndicator()
+                    Text("Preparando evaluación…")
+                    OutlinedButton(onClick = viewModel::cancel) { Text("Cancelar evaluación") }
+                }
                 is ScanEvaluationUiState.Running -> {
                     CircularProgressIndicator()
                     Text("Evaluaciones completadas: ${current.completed} de ${current.total}")
+                    if (current.completed == current.total) {
+                        Text("Guardando evaluación y sincronizando resumen…")
+                    }
                     OutlinedButton(onClick = viewModel::cancel) { Text("Cancelar evaluación") }
                 }
                 is ScanEvaluationUiState.Error -> {

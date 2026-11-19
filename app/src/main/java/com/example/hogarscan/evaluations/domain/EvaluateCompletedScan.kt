@@ -36,6 +36,9 @@ class EvaluateCompletedScan(
         require(identifications.keys.all { it in scan.config.targetAddresses })
         val completed = mutableListOf<TargetEvaluation>()
         val observations = scan.results.groupBy { it.address }
+        currentCoroutineContext().ensureActive()
+        if (!isCurrent(session)) return ScanEvaluationOutcome.SessionChanged
+        onProgress(0, scan.config.targetAddresses.size)
         for (address in scan.config.targetAddresses) {
             currentCoroutineContext().ensureActive()
             if (!isCurrent(session)) return ScanEvaluationOutcome.SessionChanged
