@@ -6,14 +6,14 @@ import com.example.hogarscan.auth.domain.model.SessionSnapshot
 import com.example.hogarscan.auth.domain.model.SessionState
 import com.example.hogarscan.auth.domain.repository.SessionReader
 import com.example.hogarscan.auth.domain.repository.isCurrentSession
-import com.example.hogarscan.evaluations.data.EvaluationWorkflow
-import com.example.hogarscan.evaluations.data.EvaluationWorkflowResult
-import com.example.hogarscan.evaluations.data.local.EvaluationStore
+import com.example.hogarscan.evaluations.domain.EvaluationSyncResult
+import com.example.hogarscan.evaluations.domain.ScanEvaluationActions
+import com.example.hogarscan.evaluations.domain.ScanEvaluationRunResult
+import com.example.hogarscan.evaluations.domain.model.EvaluationRules
+import com.example.hogarscan.scan.domain.model.SummarySyncStatus
 import com.example.hogarscan.evaluations.domain.TargetEvaluation
 import com.example.hogarscan.evaluations.domain.model.DeclaredIdentification
 import com.example.hogarscan.evaluations.domain.model.IdentificationSource
-import com.example.hogarscan.scan.data.sync.ScanSummarySyncCoordinator
-import com.example.hogarscan.scan.data.sync.SummarySyncRunResult
 import com.example.hogarscan.scan.domain.model.Ipv4Address
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -27,7 +27,7 @@ sealed interface ScanEvaluationUiState {
     data object Loading : ScanEvaluationUiState
     data object Ready : ScanEvaluationUiState
     data class Running(val completed: Int, val total: Int) : ScanEvaluationUiState
-    data class Saved(val evaluations: List<TargetEvaluation>, val message: String) : ScanEvaluationUiState
+    data class Saved(val evaluations: List<TargetEvaluation>, val message: String, val canRetrySync: Boolean = false) : ScanEvaluationUiState
     data class Error(val message: String) : ScanEvaluationUiState
 }
 
@@ -35,9 +35,7 @@ class ScanEvaluationViewModel(
     private val scanId: String,
     private val ownerId: String,
     private val sessions: SessionReader,
-    private val store: EvaluationStore,
-    private val workflow: EvaluationWorkflow,
-    private val sync: ScanSummarySyncCoordinator,
+    private val actions: ScanEvaluationActions,
     private val nowMillis: () -> Long = System::currentTimeMillis
 ) : ViewModel() {
     private val mutableState = MutableStateFlow<ScanEvaluationUiState>(ScanEvaluationUiState.Loading)
@@ -74,13 +72,14 @@ class ScanEvaluationViewModel(
         mutableState.value = ScanEvaluationUiState.Loading
         job = viewModelScope.launch {
             try {
-                val evaluations = store.load(scanId, session)
+                val evaluations = actions.load(scanId, session)
+                val savedState = if (!evaluations.isNullOrEmpty()) savedState(evaluations, session) else null
                 currentCoroutineContext().ensureActive()
                 if (id != sequence || !current(session)) return@launch
                 mutableState.value = when {
                     evaluations == null -> ScanEvaluationUiState.Error("La sesión cambió.")
                     evaluations.isEmpty() -> ScanEvaluationUiState.Ready
-                    else -> ScanEvaluationUiState.Saved(evaluations, "Resultados guardados en este dispositivo.")
+                    else -> requireNotNull(savedState)
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { if (id == sequence && current(session)) mutableState.value = ScanEvaluationUiState.Error("No se pudieron cargar las evaluaciones.") }
@@ -127,18 +126,20 @@ class ScanEvaluationViewModel(
         mutableState.value = ScanEvaluationUiState.Running(0, 0)
         job = viewModelScope.launch {
             try {
-                val outcome = workflow.run(scanId, session, identifications) { done, total ->
+                val outcome = actions.evaluate(scanId, session, identifications.toMap()) { done, total ->
                     if (id == sequence && current(session)) mutableState.value = ScanEvaluationUiState.Running(done, total)
                 }
                 currentCoroutineContext().ensureActive()
                 if (id != sequence || !current(session)) return@launch
-                mutableState.value = when (outcome) {
-                    is EvaluationWorkflowResult.Saved -> ScanEvaluationUiState.Saved(outcome.evaluations, syncMessage(outcome.sync))
-                    is EvaluationWorkflowResult.EvaluationFailed -> ScanEvaluationUiState.Error("No se completó la evaluación de ${outcome.result.address}. Puedes reintentar.")
-                    EvaluationWorkflowResult.NotFoundOrIncomplete -> ScanEvaluationUiState.Error("La revisión no está completa o pertenece a otra generación.")
-                    EvaluationWorkflowResult.AlreadyQueued -> ScanEvaluationUiState.Error("Ya existe un resumen para esta revisión. Vuelve a cargar los resultados.")
-                    EvaluationWorkflowResult.SessionChanged -> ScanEvaluationUiState.Error("La sesión cambió durante la evaluación.")
+                val nextState = when (outcome) {
+                    is ScanEvaluationRunResult.Saved -> savedState(outcome.evaluations, session, outcome.sync)
+                    is ScanEvaluationRunResult.EvaluationFailed -> ScanEvaluationUiState.Error("No se completó la evaluación de ${outcome.address}. Puedes reintentar.")
+                    ScanEvaluationRunResult.NotFoundOrIncomplete -> ScanEvaluationUiState.Error("La revisión no está completa o pertenece a otra generación.")
+                    ScanEvaluationRunResult.AlreadyQueued -> ScanEvaluationUiState.Error("Ya existe un resumen para esta revisión. Vuelve a cargar los resultados.")
+                    ScanEvaluationRunResult.SessionChanged -> ScanEvaluationUiState.Error("La sesión cambió durante la evaluación.")
                 }
+                currentCoroutineContext().ensureActive()
+                if (id == sequence && current(session)) mutableState.value = nextState
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { if (id == sequence && current(session)) mutableState.value = ScanEvaluationUiState.Error("No se pudo completar la evaluación. Inténtalo de nuevo.") }
         }
@@ -152,17 +153,39 @@ class ScanEvaluationViewModel(
 
     fun retrySync() {
         val saved = mutableState.value as? ScanEvaluationUiState.Saved ?: return
+        if (!saved.canRetrySync) return
         val session = currentSession() ?: return
         val id = ++sequence
         job?.cancel()
         mutableState.value = ScanEvaluationUiState.Loading
         job = viewModelScope.launch {
             try {
-                val outcome = sync.syncPending(session)
-                if (id == sequence && current(session)) mutableState.value = saved.copy(message = syncMessage(outcome))
+                val outcome = actions.sync(session)
+                val updated = savedState(saved.evaluations, session, outcome)
+                if (id == sequence && current(session)) mutableState.value = updated
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { if (id == sequence && current(session)) mutableState.value = saved.copy(message = "No se pudo sincronizar. Los datos siguen guardados.") }
         }
+    }
+
+    private suspend fun savedState(
+        evaluations: List<TargetEvaluation>,
+        session: SessionSnapshot,
+        outcome: EvaluationSyncResult? = null
+    ): ScanEvaluationUiState.Saved {
+        val status = actions.summaryStatus(scanId, session)
+        val refreshRequired = outcome == EvaluationSyncResult.GENERATION_REFRESH_REQUIRED
+        val message = when {
+            refreshRequired -> "La generación no coincide con el servidor. Cierra sesión y vuelve a iniciarla antes de sincronizar. El resumen permanece guardado sin cambios."
+            status == SummarySyncStatus.CONFLICT -> "El servidor tiene otro contenido para esta revisión. El resumen quedó en conflicto y no se reenviará automáticamente."
+            status == SummarySyncStatus.OBSOLETE -> "Este resumen pertenece a una generación anterior al borrado. Se conserva localmente y no se reenviará."
+            status == SummarySyncStatus.SYNCED -> "Evaluación guardada en este dispositivo. Resumen sincronizado con el servidor."
+            status == SummarySyncStatus.PENDING && outcome == EvaluationSyncResult.BUSY -> "Resumen pendiente; hay otra sincronización en curso. Comprueba su estado antes de reintentar."
+            status == SummarySyncStatus.PENDING -> "Evaluación guardada. El resumen sigue pendiente de sincronización."
+            else -> "Evaluación guardada. No se pudo comprobar el estado del resumen; vuelve a cargarlo."
+        }
+        return ScanEvaluationUiState.Saved(evaluations, message,
+            canRetrySync = status == SummarySyncStatus.PENDING && !refreshRequired)
     }
 
     private fun currentSession(): SessionSnapshot? =
@@ -176,10 +199,5 @@ class ScanEvaluationViewModel(
     private companion object {
         fun identity(state: SessionState): Triple<String, String, Int>? =
             (state as? SessionState.Authenticated)?.session?.let { Triple(it.userId, it.contextId, it.summaryGeneration) }
-        fun syncMessage(result: SummarySyncRunResult): String = when (result) {
-            SummarySyncRunResult.Completed -> "Evaluación guardada y sincronización procesada."
-            SummarySyncRunResult.Busy -> "Evaluación guardada; la sincronización ya está en curso."
-            else -> "Evaluación guardada. La sincronización quedó pendiente o requiere atención."
-        }
     }
 }

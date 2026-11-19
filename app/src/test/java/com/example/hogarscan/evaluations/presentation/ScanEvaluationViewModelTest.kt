@@ -7,6 +7,10 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.hogarscan.auth.domain.model.SessionSnapshot
 import com.example.hogarscan.auth.domain.model.SessionState
 import com.example.hogarscan.auth.domain.repository.SessionReader
+import com.example.hogarscan.evaluations.data.DefaultScanEvaluationActions
+import com.example.hogarscan.evaluations.data.HttpRulesDataSource
+import com.example.hogarscan.shared.data.http.ApiTransport
+import com.example.hogarscan.shared.data.http.ApiResult
 import com.example.hogarscan.evaluations.data.EvaluationWorkflow
 import com.example.hogarscan.evaluations.data.local.EvaluationSaveResult
 import com.example.hogarscan.evaluations.data.local.EvaluationStore
@@ -64,11 +68,22 @@ class ScanEvaluationViewModelTest {
         override suspend fun load(scanId: String, expected: SessionSnapshot) = saved
     }
     private val sync = ScanSummarySyncCoordinator(summaries, sessions, { _, _ -> error("no pending summaries") }, { _, _ -> true }, { 1 })
+    private var summaryStatus = SummarySyncStatus.PENDING
+    private var retryResult = EvaluationSyncResult.PROCESSED
+    private var retryCalls = 0
     private fun vm(gateway: EvaluationGateway): ScanEvaluationViewModel {
         val evaluator = EvaluateCompletedScan(sessions, gateway, { 1 })
         val workflow = EvaluationWorkflow(sessions, history, evaluator, storage::saveCompleted, { sync.syncPending(it) }, { 1 })
+        val adapter = DefaultScanEvaluationActions(storage, workflow, sync, { _, _ -> summaryStatus },
+            HttpRulesDataSource(ApiTransport { ApiResult.NetworkFailure }))
+        val actions = object : ScanEvaluationActions by adapter {
+            override suspend fun sync(expected: SessionSnapshot): EvaluationSyncResult {
+                retryCalls++
+                return retryResult
+            }
+        }
         return ViewModelProvider(lifecycle, viewModelFactory { initializer {
-            ScanEvaluationViewModel(scan.id, scan.ownerId, sessions, storage, workflow, sync) { 1 }
+            ScanEvaluationViewModel(scan.id, scan.ownerId, sessions, actions) { 1 }
         } })[ScanEvaluationViewModel::class.java]
     }
     @Before fun setup() { Dispatchers.setMain(StandardTestDispatcher()) }
@@ -112,6 +127,47 @@ class ScanEvaluationViewModelTest {
         sessions.state.value = SessionState.Guest
         advanceUntilIdle()
         assertEquals(ScanIdentificationState(), viewModel.identification.value)
+    }
+
+    @Test fun `lote procesado no oculta un conflicto del resumen`() = runTest {
+        val viewModel = vm(EvaluationGateway { _, _ -> EvaluationOutcome.Success(response) })
+        advanceUntilIdle()
+        viewModel.start(); advanceUntilIdle()
+        summaryStatus = SummarySyncStatus.CONFLICT
+        viewModel.retrySync(); advanceUntilIdle()
+        val saved = viewModel.uiState.value as ScanEvaluationUiState.Saved
+        assertTrue(saved.message.contains("conflicto"))
+        assertFalse(saved.canRetrySync)
+        viewModel.retrySync(); advanceUntilIdle()
+        assertEquals(1, retryCalls)
+    }
+
+    @Test fun `generacion invalida exige renovar sesion sin reenviar el resumen`() = runTest {
+        val viewModel = vm(EvaluationGateway { _, _ -> EvaluationOutcome.Success(response) })
+        advanceUntilIdle()
+        viewModel.start(); advanceUntilIdle()
+        retryResult = EvaluationSyncResult.GENERATION_REFRESH_REQUIRED
+        viewModel.retrySync(); advanceUntilIdle()
+        val saved = viewModel.uiState.value as ScanEvaluationUiState.Saved
+        assertTrue(saved.message.contains("Cierra sesión"))
+        assertFalse(saved.canRetrySync)
+        assertEquals(response, saved.evaluations.single().result)
+        viewModel.retrySync(); advanceUntilIdle()
+        assertEquals(1, retryCalls)
+    }
+
+    @Test fun `al cargar muestra sincronizado u obsoleto sin ofrecer reenvio`() = runTest {
+        val viewModel = vm(EvaluationGateway { _, _ -> EvaluationOutcome.Success(response) })
+        advanceUntilIdle()
+        viewModel.start(); advanceUntilIdle()
+        summaryStatus = SummarySyncStatus.SYNCED
+        viewModel.load(); advanceUntilIdle()
+        assertTrue((viewModel.uiState.value as ScanEvaluationUiState.Saved).message.contains("sincronizado"))
+        assertFalse((viewModel.uiState.value as ScanEvaluationUiState.Saved).canRetrySync)
+        summaryStatus = SummarySyncStatus.OBSOLETE
+        viewModel.load(); advanceUntilIdle()
+        assertTrue((viewModel.uiState.value as ScanEvaluationUiState.Saved).message.contains("generación anterior"))
+        assertFalse((viewModel.uiState.value as ScanEvaluationUiState.Saved).canRetrySync)
     }
 
     @Test fun `cambio de cuenta no publica ni guarda respuesta tardia`() = runTest {

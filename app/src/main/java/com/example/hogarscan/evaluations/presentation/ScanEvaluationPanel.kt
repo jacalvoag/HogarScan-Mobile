@@ -87,7 +87,10 @@ fun ScanEvaluationPanel(viewModel: ScanEvaluationViewModel, record: ScanRecord, 
                 }
                 is ScanEvaluationUiState.Saved -> {
                     Text(current.message)
-                    OutlinedButton(onClick = viewModel::retrySync) { Text("Reintentar sincronización") }
+                    if (current.canRetrySync) {
+                        OutlinedButton(onClick = viewModel::retrySync) { Text("Reintentar sincronización") }
+                    }
+                    OutlinedButton(onClick = viewModel::load) { Text("Actualizar estado") }
                     current.evaluations.forEach { evaluation ->
                         Text("Objetivo: ${evaluation.input.address}")
                         EvaluationResultPanel(evaluation.result, onFindingClick = { index ->
