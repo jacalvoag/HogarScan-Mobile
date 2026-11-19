@@ -202,11 +202,14 @@ class ScanEvaluationViewModel(
         session: SessionSnapshot,
         outcome: EvaluationSyncResult? = null
     ): ScanEvaluationUiState.Saved {
-        val status = actions.summaryStatus(scanId, session)
+        val summary = actions.summaryStatus(scanId, session)
+        val status = summary?.status
         if (outcome == EvaluationSyncResult.GENERATION_REFRESH_REQUIRED) generationRefreshRequired = true
         val refreshRequired = generationRefreshRequired
         val message = when {
             refreshRequired -> "La generación no coincide con el servidor. Cierra sesión y vuelve a iniciarla antes de sincronizar. El resumen permanece guardado sin cambios."
+            summary != null && summary.generation > session.summaryGeneration -> "Este resumen tiene una generación posterior a la sesión vigente. Se conserva localmente sin modificar y no se reenviará."
+            summary != null && summary.generation < session.summaryGeneration -> "Este resumen pertenece a una generación anterior al borrado. Se conserva localmente y no se reenviará."
             status == SummarySyncStatus.CONFLICT -> "El servidor tiene otro contenido para esta revisión. El resumen quedó en conflicto y no se reenviará automáticamente."
             status == SummarySyncStatus.OBSOLETE -> "Este resumen pertenece a una generación anterior al borrado. Se conserva localmente y no se reenviará."
             status == SummarySyncStatus.SYNCED -> "Evaluación guardada en este dispositivo. Resumen sincronizado con el servidor."
@@ -215,7 +218,7 @@ class ScanEvaluationViewModel(
             else -> "Evaluación guardada. No se pudo comprobar el estado del resumen; vuelve a cargarlo."
         }
         return ScanEvaluationUiState.Saved(evaluations, message,
-            canRetrySync = status == SummarySyncStatus.PENDING && !refreshRequired)
+            canRetrySync = status == SummarySyncStatus.PENDING && summary?.generation == session.summaryGeneration && !refreshRequired)
     }
 
     private fun currentSession(): SessionSnapshot? =

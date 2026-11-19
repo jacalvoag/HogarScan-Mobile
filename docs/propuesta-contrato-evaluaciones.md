@@ -38,7 +38,9 @@ un intento de sincronización. Distingue pendiente, sincronizado, conflicto y
 obsoleto; terminar un lote no equivale a confirmar todos sus resúmenes. Solo
 ofrece reintento para pendientes. Ante una generación futura solicita cerrar e
 iniciar sesión de nuevo, sin cambiar el resumen ni reenviarlo automáticamente.
-Actualizar el estado en el mismo ViewModel no elimina esa indicación.
+Actualizar el estado en el mismo ViewModel no elimina esa indicación. Un resumen
+cuya generación difiera de la sesión vigente tampoco ofrece reenvío, incluso
+si su estado persistido sigue siendo pendiente.
 
 Las solicitudes autenticadas deberán capturar el contexto de sesión y usar
 `SessionApiClient`. Comprobar la sesión no hace atómica la persistencia: la

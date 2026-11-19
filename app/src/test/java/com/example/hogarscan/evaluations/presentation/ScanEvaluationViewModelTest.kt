@@ -69,6 +69,7 @@ class ScanEvaluationViewModelTest {
     }
     private val sync = ScanSummarySyncCoordinator(summaries, sessions, { _, _ -> error("no pending summaries") }, { _, _ -> true }, { 1 })
     private var summaryStatus = SummarySyncStatus.PENDING
+    private var summaryGeneration = session.summaryGeneration
     private var retryResult = EvaluationSyncResult.PROCESSED
     private var retryCalls = 0
     private var statusWait: CompletableDeferred<Unit>? = null
@@ -80,7 +81,7 @@ class ScanEvaluationViewModelTest {
         val workflow = EvaluationWorkflow(sessions, history, evaluator, storage::saveCompleted, { sync.syncPending(it) }, { 1 })
         val adapter = DefaultScanEvaluationActions(storage, workflow, sync, { _, _ ->
             statusWait?.let { withContext(NonCancellable) { it.await() } }
-            summaryStatus
+            ScanSummarySyncState(summaryStatus, summaryGeneration)
         },
             HttpRulesDataSource(ApiTransport { ApiResult.NetworkFailure }))
         val actions = object : ScanEvaluationActions by adapter {
@@ -182,6 +183,22 @@ class ScanEvaluationViewModelTest {
         viewModel.load(); advanceUntilIdle()
         assertTrue((viewModel.uiState.value as ScanEvaluationUiState.Saved).message.contains("generación anterior"))
         assertFalse((viewModel.uiState.value as ScanEvaluationUiState.Saved).canRetrySync)
+    }
+
+    @Test fun `resumen de otra generacion nunca ofrece reenvio aunque siga pendiente`() = runTest {
+        val viewModel = vm(EvaluationGateway { _, _ -> EvaluationOutcome.Success(response) })
+        advanceUntilIdle()
+        viewModel.start(); advanceUntilIdle()
+        summaryGeneration = session.summaryGeneration + 1
+        viewModel.load(); advanceUntilIdle()
+        val future = viewModel.uiState.value as ScanEvaluationUiState.Saved
+        assertTrue(future.message.contains("posterior"))
+        assertFalse(future.canRetrySync)
+        summaryGeneration = session.summaryGeneration - 1
+        viewModel.load(); advanceUntilIdle()
+        val old = viewModel.uiState.value as ScanEvaluationUiState.Saved
+        assertTrue(old.message.contains("anterior"))
+        assertFalse(old.canRetrySync)
     }
 
     @Test fun `cambiar cuenta durante lectura del estado no publica evaluacion anterior`() = runTest {

@@ -44,7 +44,7 @@ import com.example.hogarscan.scan.domain.usecase.DeleteSummariesOutcome
 import com.example.hogarscan.scan.presentation.DeleteSummariesViewModel
 import com.example.hogarscan.scan.data.sync.DeleteScanSummaries
 import com.example.hogarscan.evaluations.data.DefaultScanEvaluationActions
-import com.example.hogarscan.scan.domain.model.SummarySyncStatus
+import com.example.hogarscan.evaluations.domain.ScanSummarySyncState
 import com.example.hogarscan.evaluations.data.DefaultEvaluationGateway
 import com.example.hogarscan.evaluations.data.HttpEvaluationDataSource
 import com.example.hogarscan.evaluations.data.HttpRulesDataSource
@@ -176,8 +176,7 @@ class AppContainer(context: Context) {
                     DefaultScanEvaluationActions(evaluationStore, evaluationWorkflow, scanSummarySyncCoordinator,
                         readStatus = { id, expected ->
                             database.scanSummaryDao().findById(id, expected.userId.lowercase())?.let {
-                                if (it.summaryGeneration < expected.summaryGeneration) SummarySyncStatus.OBSOLETE
-                                else it.syncStatus
+                                ScanSummarySyncState(it.syncStatus, it.summaryGeneration)
                             }
                         }, rulesSource = evaluationRules))
             }

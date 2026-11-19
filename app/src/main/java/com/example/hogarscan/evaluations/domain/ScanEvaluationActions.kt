@@ -16,9 +16,11 @@ interface ScanEvaluationActions {
         onProgress: (Int, Int) -> Unit
     ): ScanEvaluationRunResult
     suspend fun sync(expected: SessionSnapshot): EvaluationSyncResult
-    suspend fun summaryStatus(scanId: String, expected: SessionSnapshot): SummarySyncStatus?
+    suspend fun summaryStatus(scanId: String, expected: SessionSnapshot): ScanSummarySyncState?
     suspend fun rules(): EvaluationRules?
 }
+
+data class ScanSummarySyncState(val status: SummarySyncStatus, val generation: Int)
 
 enum class EvaluationSyncResult {
     PROCESSED, BUSY, SESSION_UNAVAILABLE, CONTEXT_CHANGED, QUEUE_CHANGED,

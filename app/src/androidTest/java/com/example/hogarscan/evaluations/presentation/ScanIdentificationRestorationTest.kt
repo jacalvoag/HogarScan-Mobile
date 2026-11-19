@@ -45,7 +45,7 @@ class ScanIdentificationRestorationTest {
             override suspend fun evaluate(scanId: String, expected: SessionSnapshot,
                 identifications: Map<Ipv4Address, DeclaredIdentification>, onProgress: (Int, Int) -> Unit): ScanEvaluationRunResult = error("No evaluation expected")
             override suspend fun sync(expected: SessionSnapshot) = error("No sync expected")
-            override suspend fun summaryStatus(scanId: String, expected: SessionSnapshot): SummarySyncStatus? = null
+            override suspend fun summaryStatus(scanId: String, expected: SessionSnapshot): ScanSummarySyncState? = null
             override suspend fun rules(): EvaluationRules? = null
         }
         val address = Ipv4Address.parse("192.168.1.2")

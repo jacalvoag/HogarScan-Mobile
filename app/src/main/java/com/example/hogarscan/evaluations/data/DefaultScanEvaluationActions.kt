@@ -9,13 +9,13 @@ import com.example.hogarscan.evaluations.domain.model.DeclaredIdentification
 import com.example.hogarscan.scan.data.sync.ScanSummarySyncCoordinator
 import com.example.hogarscan.scan.data.sync.SummarySyncRunResult
 import com.example.hogarscan.scan.domain.model.Ipv4Address
-import com.example.hogarscan.scan.domain.model.SummarySyncStatus
+import com.example.hogarscan.evaluations.domain.ScanSummarySyncState
 
 class DefaultScanEvaluationActions(
     private val store: EvaluationStore,
     private val workflow: EvaluationWorkflow,
     private val coordinator: ScanSummarySyncCoordinator,
-    private val readStatus: suspend (String, SessionSnapshot) -> SummarySyncStatus?,
+    private val readStatus: suspend (String, SessionSnapshot) -> ScanSummarySyncState?,
     private val rulesSource: HttpRulesDataSource
 ) : ScanEvaluationActions {
     override suspend fun load(scanId: String, expected: SessionSnapshot) = store.load(scanId, expected)
