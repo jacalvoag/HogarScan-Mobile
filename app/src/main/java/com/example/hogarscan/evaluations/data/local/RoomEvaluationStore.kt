@@ -12,6 +12,11 @@ import com.example.hogarscan.evaluations.domain.prepareEvaluatedScanSummary
 import com.example.hogarscan.scan.data.local.HogarScanDatabase
 import com.example.hogarscan.scan.data.local.mapper.toDomain
 import com.example.hogarscan.scan.domain.model.Ipv4Address
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 
 enum class EvaluationSaveResult { SAVED, ALREADY_QUEUED, SESSION_CHANGED }
 
@@ -23,18 +28,23 @@ interface EvaluationStore {
 /** La sesión permanece bloqueada solo durante la transacción local, nunca durante HTTP. */
 class RoomEvaluationStore(
     private val database: HogarScanDatabase,
-    private val sessions: PersistentSessionStore
+    private val sessions: PersistentSessionStore,
+    private val preparationDispatcher: CoroutineDispatcher = Dispatchers.Default
 ) : EvaluationStore {
     override suspend fun saveCompleted(
         scanId: String,
         evaluations: List<TargetEvaluation>,
         expected: SessionSnapshot
     ): EvaluationSaveResult {
-        val records = evaluations.map { evaluation ->
-            val identification = evaluation.input.identification
-            ScanEvaluationEntity(scanId, evaluation.input.address.value,
-                EvaluationResultJson.encode(evaluation.result), identification?.vendor,
-                identification?.product, identification?.version, identification?.source?.name)
+        // Preparar el lote no bloquea la interfaz ni mantiene bloqueada la sesión.
+        val records = withContext(preparationDispatcher) {
+            evaluations.map { evaluation ->
+                currentCoroutineContext().ensureActive()
+                val identification = evaluation.input.identification
+                ScanEvaluationEntity(scanId, evaluation.input.address.value,
+                    EvaluationResultJson.encode(evaluation.result), identification?.vendor,
+                    identification?.product, identification?.version, identification?.source?.name)
+            }
         }
         return sessions.withCurrentSession(expected) {
             database.withTransaction {

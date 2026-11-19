@@ -10,6 +10,10 @@ import com.example.hogarscan.scan.data.local.HogarScanDatabase
 import com.example.hogarscan.scan.data.local.mapper.toLocal
 import com.example.hogarscan.scan.domain.model.*
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlin.coroutines.CoroutineContext
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -57,5 +61,25 @@ class RoomEvaluationStoreTest {
         assertEquals(EvaluationSaveResult.SESSION_CHANGED, store.saveCompleted(scanId, listOf(evaluation), first))
         assertNull(store.load(scanId, first))
         assertTrue(db.scanSummaryDao().findPending(user, 1).isEmpty())
+    }
+
+    @Test fun cambiarCuentaDurantePreparacionNoGuardaElLote() = runBlocking {
+        val first = requireNotNull(sessions.activate(credentials(user)))
+        db.scanRecordDao().insertWithDetails(scan.toLocal())
+        val queued = ArrayDeque<Runnable>()
+        val preparation = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) { queued.addLast(block) }
+        }
+        val store = RoomEvaluationStore(db, sessions, preparation)
+        val save = async(start = CoroutineStart.UNDISPATCHED) {
+            store.saveCompleted(scanId, listOf(evaluation), first)
+        }
+        assertFalse(save.isCompleted)
+        assertEquals(1, queued.size)
+        sessions.activate(credentials("a32807a8-c54a-47a5-8a4e-63093fcb0bda"))
+        queued.removeFirst().run()
+        assertEquals(EvaluationSaveResult.SESSION_CHANGED, save.await())
+        assertTrue(db.scanSummaryDao().findPending(user, 1).isEmpty())
+        assertTrue(db.scanEvaluationDao().findByScan(scanId, scan.ownerId).isEmpty())
     }
 }
