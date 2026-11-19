@@ -28,5 +28,9 @@ data class ProbeResultEntity(
     val outcome: ProbeOutcome,
 
     @ColumnInfo(name = "duration_millis")
-    val durationMillis: Long
+    val durationMillis: Long,
+    @ColumnInfo(name = "service_protocol") val serviceProtocol: String? = null,
+    @ColumnInfo(name = "service_vendor") val serviceVendor: String? = null,
+    @ColumnInfo(name = "service_product") val serviceProduct: String? = null,
+    @ColumnInfo(name = "service_version") val serviceVersion: String? = null
 )

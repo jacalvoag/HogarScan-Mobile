@@ -28,8 +28,8 @@ class ScanConfig(
             "El rango puede contener como máximo 254 direcciones."
         }
 
-        require(this.ports.isNotEmpty()) {
-            "Selecciona al menos un puerto."
+        require(this.ports.size in 1..6) {
+            "Selecciona entre uno y seis puertos."
         }
 
         require(this.ports.all { it in ScanPolicy.allowedPorts }) {

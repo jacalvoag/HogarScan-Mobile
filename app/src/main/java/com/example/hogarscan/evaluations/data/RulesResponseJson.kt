@@ -28,7 +28,7 @@ internal object RulesResponseJson {
         val maxProbes = number(root["max_probes_per_evaluation"])
         val maxAddresses = number(root["max_addresses_per_scan"])
         require(categories.size == 5 && categories.toSet() == FindingCategory.entries.toSet())
-        require(ports.size == 6 && ports.toSet() == setOf(22, 23, 80, 443, 445, 3389))
+        require(ports.size == ports.toSet().size && ports.toSet() in listOf(setOf(22, 23, 80, 443, 445, 3389), setOf(21, 22, 23, 80, 443, 445, 3389)))
         require(maxProbes == 6 && maxAddresses == 254)
         EvaluationRules(version, published, categories.toSet(), maxProbes, caveat, maxAddresses, ports.toSet())
     }

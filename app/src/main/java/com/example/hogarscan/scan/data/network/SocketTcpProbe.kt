@@ -12,6 +12,9 @@ import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.SocketTimeoutException
 import kotlin.coroutines.resume
+import com.example.hogarscan.scan.domain.model.ServiceEvidence
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -66,11 +69,21 @@ internal class SocketTcpProbe(
 
                     checkConnection(connectionId)
 
+                    var service: ServiceEvidence? = null
                     val outcome = try {
                         socket.connect(
                             endpoint(address, port),
                             ScanPolicy.CONNECT_TIMEOUT_MILLIS
                         )
+                        checkConnection(connectionId)
+                        val expiry = inspectionTimer.schedule({ closeQuietly(socket) }, ServiceInspector.BUDGET_MILLIS, TimeUnit.MILLISECONDS)
+                        try {
+                            service = ServiceInspector.inspect(socket, address.toString(), port)
+                        } catch (_: IOException) {
+                            // La conexión ya fue aceptada; un fallo de identificación no cambia ese hecho.
+                        } catch (_: SecurityException) {
+                            // No se omiten las comprobaciones TLS para identificar HTTPS.
+                        } finally { expiry.cancel(false) }
                         ProbeOutcome.ACCEPTED
                     } catch (_: SocketTimeoutException) {
                         ProbeOutcome.TIMED_OUT
@@ -85,13 +98,19 @@ internal class SocketTcpProbe(
                     if (continuation.isActive) {
                         checkConnection(connectionId)
                         continuation.resume(
-                            result(address, port, outcome, startedAt)
+                            result(address, port, outcome, startedAt, service)
                         )
                     }
                 }
             } finally {
                 closeQuietly(socket)
             }
+        }
+    }
+
+    private companion object {
+        val inspectionTimer = Executors.newSingleThreadScheduledExecutor { task ->
+            Thread(task, "hogarscan-inspection-deadline").apply { isDaemon = true }
         }
     }
 
@@ -115,12 +134,14 @@ internal class SocketTcpProbe(
         address: Ipv4Address,
         port: Int,
         outcome: ProbeOutcome,
-        startedAt: Long
+        startedAt: Long,
+        service: ServiceEvidence? = null
     ) = ProbeResult(
         address = address,
         port = port,
         outcome = outcome,
-        durationMillis = (nanoTime() - startedAt) / 1_000_000L
+        durationMillis = (nanoTime() - startedAt) / 1_000_000L,
+        service = service
     )
 
     private fun closeQuietly(socket: Socket) {

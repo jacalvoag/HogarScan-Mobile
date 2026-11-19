@@ -133,7 +133,7 @@ class ScanConfigTest {
 
     @Test
     fun `rechaza puertos fuera de los permitidos`() {
-        listOf(0, 21, 8080, 65536).forEach { port ->
+        listOf(0, 25, 8080, 65536).forEach { port ->
             assertThrows(IllegalArgumentException::class.java) {
                 config(
                     "192.168.1.1",

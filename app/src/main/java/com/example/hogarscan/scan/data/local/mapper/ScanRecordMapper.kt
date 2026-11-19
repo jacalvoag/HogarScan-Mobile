@@ -4,6 +4,8 @@ import com.example.hogarscan.scan.data.local.entity.ProbeResultEntity
 import com.example.hogarscan.scan.data.local.entity.ScanPortEntity
 import com.example.hogarscan.scan.data.local.entity.ScanRecordEntity
 import com.example.hogarscan.scan.data.local.relation.ScanRecordWithDetails
+import com.example.hogarscan.scan.domain.model.ServiceEvidence
+import com.example.hogarscan.scan.domain.model.ServiceProtocol
 import com.example.hogarscan.scan.domain.model.Ipv4Address
 import com.example.hogarscan.scan.domain.model.NetworkScope
 import com.example.hogarscan.scan.domain.model.ProbeResult
@@ -34,7 +36,11 @@ fun ScanRecord.toLocal(): ScanRecordWithDetails {
                 address = result.address.value,
                 port = result.port,
                 outcome = result.outcome,
-                durationMillis = result.durationMillis
+                durationMillis = result.durationMillis,
+                serviceProtocol = result.service?.protocol?.name,
+                serviceVendor = result.service?.vendor,
+                serviceProduct = result.service?.product,
+                serviceVersion = result.service?.version
             )
         }
     )
@@ -71,7 +77,9 @@ fun ScanRecordWithDetails.toDomain(): ScanRecord {
                 address = Ipv4Address.fromValue(result.address),
                 port = result.port,
                 outcome = result.outcome,
-                durationMillis = result.durationMillis
+                durationMillis = result.durationMillis,
+                service = result.serviceProtocol?.let { ServiceEvidence(enumValueOf<ServiceProtocol>(it),
+                    result.serviceVendor, result.serviceProduct, result.serviceVersion) }
             )
         },
         finishedAtMillis = record.finishedAtMillis,

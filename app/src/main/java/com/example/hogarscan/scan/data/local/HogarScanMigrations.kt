@@ -4,6 +4,15 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 object HogarScanMigrations {
+    val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            listOf("service_protocol", "service_vendor", "service_product", "service_version").forEach {
+                db.execSQL("ALTER TABLE probe_results ADD COLUMN $it TEXT")
+            }
+            db.execSQL("ALTER TABLE scan_evaluations ADD COLUMN service_port INTEGER")
+        }
+    }
+
 
     val MIGRATION_2_3 = object : Migration(2, 3) {
         override fun migrate(db: SupportSQLiteDatabase) {

@@ -19,7 +19,7 @@ import com.example.hogarscan.evaluations.data.local.ScanEvaluationDao
         ScanSummaryEntity::class,
         ScanEvaluationEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = true
 )
 abstract class HogarScanDatabase : RoomDatabase() {

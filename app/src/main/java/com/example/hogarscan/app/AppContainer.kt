@@ -33,6 +33,7 @@ import com.example.hogarscan.auth.domain.repository.AuthRepository
 import com.example.hogarscan.auth.presentation.AuthViewModel
 import com.example.hogarscan.scan.domain.usecase.HistoryOwnerResolver
 import com.example.hogarscan.scan.data.local.HogarScanMigrations.MIGRATION_1_2
+import com.example.hogarscan.scan.data.local.HogarScanMigrations.MIGRATION_3_4
 import com.example.hogarscan.scan.data.local.HogarScanMigrations.MIGRATION_2_3
 import com.example.hogarscan.scan.data.local.repository.RoomScanSummaryRepository
 import com.example.hogarscan.scan.domain.repository.ScanSummaryRepository
@@ -188,7 +189,7 @@ class AppContainer(context: Context) {
             HogarScanDatabase::class.java,
             "hogarscan.db"
         )
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
             .build()
     }
 
