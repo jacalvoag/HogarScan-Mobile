@@ -64,8 +64,9 @@ contexto local. `HttpEvaluationDataSource` envía la solicitud con la sesión
 capturada y comprueba el propietario; `EvaluationResponseJson` interpreta los
 resultados y las fuentes. `DefaultEvaluationGateway` adapta los resultados al
 contrato del dominio. Los nombres `REFUSED` y `TIMEOUT` se traducen antes
-del envío. El flujo de revisión completa está conectado desde el historial;
-todavía requiere pruebas contra la API autenticada y en teléfonos físicos.
+del envío. El flujo de revisión completa está conectado desde el historial.
+La integración con la API autenticada y las comprobaciones manuales en Android
+se registran en [alcance y validación](alcance-original-y-validacion.md).
 
 `HttpRulesDataSource` consulta `GET /rules` sin credenciales y transforma los
 metadatos publicados a `EvaluationRules`. La versión procede del servidor;
@@ -116,10 +117,32 @@ de esa respuesta y no es identificador permanente.
 La vista de detalle se abre desde cada hallazgo de la revisión y utiliza los
 iconos SVG originales del diseño. Presenta únicamente los datos y estados de
 fuentes disponibles en el resultado; sus enlaces NVD se validan antes de abrirse.
-El texto de ejemplo del diseño no se utiliza como evidencia real: el escaneo
-TCP actual no identifica por sí solo HTTP ni produce porcentajes de certeza o
-vulnerabilidades confirmadas. Las fuentes tipográficas del diseño y la revisión
-visual de las demás pantallas permanecen pendientes.
+
+Una conexión TCP aceptada no identifica por sí sola HTTP. El inspector de
+servicios puede reconocerlo mediante una respuesta HTTP compatible. El número
+de puerto no sustituye esa evidencia ni permite afirmar vulnerabilidades o
+porcentajes de certeza.
+
+ScanHistoryViewModel conserva el hallazgo abierto durante la rotación.
+Al volver se cierra el hallazgo y permanece abierta la misma revisión.
+La selección se limpia al abrir otra revisión, cerrar el detalle o cambiar
+de sesión. El contenido del hallazgo no se añade al Bundle de Android.
+
+Las evaluaciones persistidas se recuperan desde Room al reabrir la aplicación
+con la cuenta correspondiente; abrirlas no inicia otra evaluación.
+
+Las fuentes tipográficas del diseño y la revisión visual de las demás
+pantallas permanecen pendientes.
+
+## Presentación del progreso
+
+El progreso cuenta objetivos evaluados, no hallazgos ni coincidencias CVE.
+Mientras se prepara la operación se muestra un estado de preparación.
+Cuando se conoce el total, la evaluación informa los objetivos completados
+respecto de ese total, incluso antes de terminar la primera solicitud.
+
+Completar todas las solicitudes da paso al guardado y a la sincronización
+del resumen. La presentación distingue esa etapa del estado sincronizado.
 
 ## Evidencia observada e identidades anunciadas
 
