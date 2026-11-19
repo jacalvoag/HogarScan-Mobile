@@ -1,10 +1,8 @@
 # Propuesta de integración de evaluaciones
 
-Esta propuesta documenta el flujo integrado en la rama de evaluaciones para
-revisión conjunta con José. Los resultados se guardan localmente, se encola un
-resumen y se solicita sincronización. Las pruebas de Room y migración se han
-ejecutado en un emulador; siguen pendientes las pruebas con la API autenticada
-y los teléfonos físicos.
+El historial conecta evaluación autenticada, guardado local atómico, resumen
+pendiente y sincronización. Las comprobaciones automatizadas con transporte
+simulado se distinguen de las pruebas contra la API real y en teléfonos físicos.
 
 ## Entrada y resultado
 
@@ -19,14 +17,30 @@ y los teléfonos físicos.
   admite `null` y no se interpreta como `false`.
 - El adaptador traduce `REJECTED` a `REFUSED` y `TIMED_OUT` a `TIMEOUT`.
 
-## Puntos para revisar en conjunto
+## Recuperación e integración
 
-1. Confirmar con José el contrato de persistencia y las garantías frente a
-   cambios de sesión o generación.
-2. La implementación actual evalúa todos los objetivos en secuencia y descarta
-   el lote parcial si alguno falla; confirmar la política de recuperación.
-3. Revisar los puntos de integración del historial, sincronización y borrado.
-4. Validar la API autenticada, sus tiempos de espera y las fuentes externas.
+La política implementada evalúa todos los objetivos en secuencia. Si alguno
+falla, no declara completo ni guarda el lote temporal de evaluaciones. El detalle
+TCP de la revisión permanece en Room; un reintento explícito vuelve a evaluar
+el lote completo. No hay reintentos automáticos ni resúmenes parciales.
+
+El formulario integrado y las identificaciones por objetivo pertenecen al
+ViewModel de cada revisión: sobreviven a la rotación y a los cambios de pestaña
+mientras se conserve ese ViewModel. Se limpian al cambiar cuenta, contexto o
+generación. No se promete restauración del formulario tras terminar el proceso.
+
+Presentación utiliza `ScanEvaluationActions`, un contrato de dominio. La capa
+de datos adapta el flujo compartido, Room, los resultados de sincronización y
+la consulta pública de reglas. Compose no ejecuta solicitudes HTTP.
+
+La pantalla consulta el estado persistido de su resumen al cargar y al terminar
+un intento de sincronización. Distingue pendiente, sincronizado, conflicto y
+obsoleto; terminar un lote no equivale a confirmar todos sus resúmenes. Solo
+ofrece reintento para pendientes. Ante una generación futura solicita cerrar e
+iniciar sesión de nuevo, sin cambiar el resumen ni reenviarlo automáticamente.
+Actualizar el estado en el mismo ViewModel no elimina esa indicación. Un resumen
+cuya generación difiera de la sesión vigente tampoco ofrece reenvío, incluso
+si su estado persistido sigue siendo pendiente.
 
 Las solicitudes autenticadas deberán capturar el contexto de sesión y usar
 `SessionApiClient`. Comprobar la sesión no hace atómica la persistencia: la
@@ -66,7 +80,7 @@ identificaciones por objetivo. Evalúa un objetivo por solicitud en secuencia,
 con progreso y propagación de cancelación. Ante fallo devuelve el objetivo y el
 tipo de error sin declarar completada la evaluación. Ante cambio de cuenta,
 contexto o generación descarta el resultado. No guarda resultados parciales ni
-hace reintentos; la política de recuperación y persistencia queda por acordar.
+hace reintentos automáticos; se aplica la política de recuperación descrita arriba.
 
 `prepareEvaluatedScanSummary` requiere exactamente una evaluación por objetivo
 con las observaciones, revisión y propietario correspondientes. Calcula las
@@ -76,11 +90,16 @@ evaluaciones y encola el resumen dentro de una transacción, mientras el almacé
 de sesión impide cambiar cuenta o generación durante esa operación local. No se
 mantiene ese bloqueo durante llamadas de red. Si falla la sincronización, los
 datos y el resumen pendiente permanecen disponibles para reintentar.
+La preparación JSON se ejecuta en un dispatcher de trabajo antes de adquirir
+el bloqueo de sesión; la escritura vuelve a comprobar propietario y generación.
+Los resultados grandes se muestran en una lista diferida de altura acotada.
 Una prueba instrumentada ejecuta el flujo con Room y transporte simulado: tras
 un fallo de red, recupera la evaluación y reintenta el mismo resumen sin IP.
 
 El borrado de resúmenes del servidor requiere confirmación en la pantalla de
-cuenta y conserva el historial local. La petición utiliza la generación que se
+cuenta y conserva el historial local. `DeleteSummariesViewModel` mantiene la
+confirmación y el envío pendiente al recrear la pantalla, evita envíos duplicados
+y descarta respuestas de otras cuentas. La petición utiliza la generación que se
 mostró al confirmar; nunca se repite automáticamente con una nueva generación.
 Una respuesta perdida se presenta como resultado no confirmado y exige que la
 persona compruebe el estado antes de volver a tomar una decisión.

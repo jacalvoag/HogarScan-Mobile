@@ -38,7 +38,13 @@ import com.example.hogarscan.scan.data.local.repository.RoomScanSummaryRepositor
 import com.example.hogarscan.scan.domain.repository.ScanSummaryRepository
 import com.example.hogarscan.scan.data.http.HttpScanSummaryDataSource
 import com.example.hogarscan.scan.data.sync.ScanSummarySyncCoordinator
+import com.example.hogarscan.scan.data.sync.DeleteSummariesResult
+import com.example.hogarscan.scan.domain.usecase.DeleteSummariesAction
+import com.example.hogarscan.scan.domain.usecase.DeleteSummariesOutcome
+import com.example.hogarscan.scan.presentation.DeleteSummariesViewModel
 import com.example.hogarscan.scan.data.sync.DeleteScanSummaries
+import com.example.hogarscan.evaluations.data.DefaultScanEvaluationActions
+import com.example.hogarscan.evaluations.domain.ScanSummarySyncState
 import com.example.hogarscan.evaluations.data.DefaultEvaluationGateway
 import com.example.hogarscan.evaluations.data.HttpEvaluationDataSource
 import com.example.hogarscan.evaluations.data.HttpRulesDataSource
@@ -115,6 +121,20 @@ class AppContainer(context: Context) {
         DeleteScanSummaries(sessionApiClient, scanSummaryRepository, sessionStore::updateSummaryGeneration)
     }
 
+    val deleteSummariesViewModelFactory: ViewModelProvider.Factory = viewModelFactory {
+        initializer {
+            DeleteSummariesViewModel(sessionReader, DeleteSummariesAction { expected ->
+                when (deleteScanSummaries.delete(expected)) {
+                    is DeleteSummariesResult.Deleted -> DeleteSummariesOutcome.DELETED
+                    is DeleteSummariesResult.AlreadyAdvanced -> DeleteSummariesOutcome.ALREADY_ADVANCED
+                    DeleteSummariesResult.NewConfirmationRequired -> DeleteSummariesOutcome.NEW_CONFIRMATION_REQUIRED
+                    DeleteSummariesResult.SessionChanged -> DeleteSummariesOutcome.SESSION_CHANGED
+                    is DeleteSummariesResult.Failure -> DeleteSummariesOutcome.UNCONFIRMED
+                }
+            })
+        }
+    }
+
     val evaluationStore by lazy { RoomEvaluationStore(database, sessionStore) }
     val evaluationRules by lazy { HttpRulesDataSource(apiTransport) }
 
@@ -152,8 +172,13 @@ class AppContainer(context: Context) {
     fun scanEvaluationViewModelFactory(scanId: String, ownerId: String): ViewModelProvider.Factory =
         viewModelFactory {
             initializer {
-                ScanEvaluationViewModel(scanId, ownerId, sessionReader, evaluationStore,
-                    evaluationWorkflow, scanSummarySyncCoordinator)
+                ScanEvaluationViewModel(scanId, ownerId, sessionReader,
+                    DefaultScanEvaluationActions(evaluationStore, evaluationWorkflow, scanSummarySyncCoordinator,
+                        readStatus = { id, expected ->
+                            database.scanSummaryDao().findById(id, expected.userId.lowercase())?.let {
+                                ScanSummarySyncState(it.syncStatus, it.summaryGeneration)
+                            }
+                        }, rulesSource = evaluationRules))
             }
         }
 
