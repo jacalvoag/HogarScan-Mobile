@@ -11,6 +11,7 @@ import com.example.hogarscan.evaluations.data.EvaluationWorkflowResult
 import com.example.hogarscan.evaluations.data.local.EvaluationStore
 import com.example.hogarscan.evaluations.domain.TargetEvaluation
 import com.example.hogarscan.evaluations.domain.model.DeclaredIdentification
+import com.example.hogarscan.evaluations.domain.model.IdentificationSource
 import com.example.hogarscan.scan.data.sync.ScanSummarySyncCoordinator
 import com.example.hogarscan.scan.data.sync.SummarySyncRunResult
 import com.example.hogarscan.scan.domain.model.Ipv4Address
@@ -41,6 +42,8 @@ class ScanEvaluationViewModel(
 ) : ViewModel() {
     private val mutableState = MutableStateFlow<ScanEvaluationUiState>(ScanEvaluationUiState.Loading)
     val uiState = mutableState.asStateFlow()
+    private val mutableIdentification = MutableStateFlow(ScanIdentificationState())
+    val identification = mutableIdentification.asStateFlow()
     private var job: Job? = null
     private var sequence = 0L
     private var identity = identity(sessions.state.value)
@@ -53,6 +56,7 @@ class ScanEvaluationViewModel(
                     identity = next
                     sequence++
                     job?.cancel()
+                    mutableIdentification.value = ScanIdentificationState()
                     mutableState.value = ScanEvaluationUiState.Error("La sesión cambió. Vuelve al historial para continuar.")
                 }
             }
@@ -83,7 +87,37 @@ class ScanEvaluationViewModel(
         }
     }
 
-    fun start(identifications: Map<Ipv4Address, DeclaredIdentification> = emptyMap()) {
+    fun editIdentification(transform: (ScanIdentificationState) -> ScanIdentificationState) {
+        if (mutableState.value != ScanEvaluationUiState.Ready) return
+        mutableIdentification.value = transform(mutableIdentification.value).copy(error = null)
+    }
+
+    fun toggleIdentificationSource() = editIdentification {
+        it.copy(source = if (it.source == IdentificationSource.USER_DEVICE_LABEL)
+            IdentificationSource.USER_ADMIN_PANEL else IdentificationSource.USER_DEVICE_LABEL)
+    }
+
+    fun addIdentification(allowedAddresses: Collection<Ipv4Address>) {
+        if (mutableState.value != ScanEvaluationUiState.Ready) return
+        val form = mutableIdentification.value
+        val address = runCatching { Ipv4Address.parse(form.address.trim()) }.getOrNull()
+        val declared = runCatching {
+            DeclaredIdentification(form.vendor, form.product, form.version, form.source)
+        }.getOrNull()
+        mutableIdentification.value = if (address == null || address !in allowedAddresses || declared == null) {
+            form.copy(error = "Revisa la dirección y completa fabricante, producto y versión.")
+        } else {
+            ScanIdentificationState(source = form.source,
+                identifications = form.identifications + (address to declared))
+        }
+    }
+
+    fun removeIdentification(address: Ipv4Address) = editIdentification {
+        it.copy(identifications = it.identifications - address)
+    }
+
+    fun start(identifications: Map<Ipv4Address, DeclaredIdentification> = mutableIdentification.value.identifications) {
+        if (mutableState.value != ScanEvaluationUiState.Ready || mutableIdentification.value.unfinished) return
         val session = currentSession() ?: run {
             mutableState.value = ScanEvaluationUiState.Error("Inicia sesión con la cuenta propietaria de esta revisión.")
             return

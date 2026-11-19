@@ -12,7 +12,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -20,12 +19,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.hogarscan.evaluations.domain.model.DeclaredIdentification
 import com.example.hogarscan.evaluations.domain.model.EvaluationRules
 import com.example.hogarscan.evaluations.data.HttpRulesDataSource
 import com.example.hogarscan.evaluations.data.RulesRemoteResult
 import com.example.hogarscan.evaluations.domain.model.IdentificationSource
-import com.example.hogarscan.scan.domain.model.Ipv4Address
 import com.example.hogarscan.scan.domain.model.ScanRecord
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -33,13 +30,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun ScanEvaluationPanel(viewModel: ScanEvaluationViewModel, record: ScanRecord, rulesDataSource: HttpRulesDataSource? = null, onFindingSelected: (FindingDetail) -> Unit = {}) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val identifications = remember(record.id) { mutableStateMapOf<Ipv4Address, DeclaredIdentification>() }
-    var address by remember(record.id) { mutableStateOf("") }
-    var vendor by remember(record.id) { mutableStateOf("") }
-    var product by remember(record.id) { mutableStateOf("") }
-    var version by remember(record.id) { mutableStateOf("") }
-    var source by remember(record.id) { mutableStateOf(IdentificationSource.USER_DEVICE_LABEL) }
-    var formError by remember(record.id) { mutableStateOf<String?>(null) }
+    val form by viewModel.identification.collectAsStateWithLifecycle()
     var rules by remember(record.id) { mutableStateOf<EvaluationRules?>(null) }
     var rulesLoading by remember(record.id) { mutableStateOf(false) }
     var rulesError by remember(record.id) { mutableStateOf(false) }
@@ -70,31 +61,20 @@ fun ScanEvaluationPanel(viewModel: ScanEvaluationViewModel, record: ScanRecord, 
                 ScanEvaluationUiState.Loading -> CircularProgressIndicator()
                 ScanEvaluationUiState.Ready -> {
                     Text("Puedes agregar una identificación declarada para cada dirección antes de evaluar. Es opcional y no se verifica automáticamente.")
-                    OutlinedTextField(address, { address = it }, label = { Text("IPv4 del objetivo") }, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(vendor, { vendor = it }, label = { Text("Fabricante") }, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(product, { product = it }, label = { Text("Producto") }, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(version, { version = it }, label = { Text("Versión") }, modifier = Modifier.fillMaxWidth())
-                    OutlinedButton(onClick = {
-                        source = if (source == IdentificationSource.USER_DEVICE_LABEL) IdentificationSource.USER_ADMIN_PANEL else IdentificationSource.USER_DEVICE_LABEL
-                    }) { Text(if (source == IdentificationSource.USER_DEVICE_LABEL) "Origen: etiqueta del equipo" else "Origen: panel de administración") }
-                    OutlinedButton(onClick = {
-                        val ip = runCatching { Ipv4Address.parse(address.trim()) }.getOrNull()
-                        val declared = runCatching { DeclaredIdentification(vendor, product, version, source) }.getOrNull()
-                        if (ip == null || ip !in record.config.targetAddresses || declared == null) {
-                            formError = "Revisa la dirección y completa fabricante, producto y versión."
-                        } else {
-                            identifications[ip] = declared
-                            formError = null
-                            address = ""; vendor = ""; product = ""; version = ""
-                        }
-                    }) { Text("Agregar identificación") }
-                    formError?.let { Text(it) }
-                    identifications.keys.forEach { ip ->
-                        OutlinedButton(onClick = { identifications.remove(ip) }) { Text("Quitar identificación de $ip") }
+                    OutlinedTextField(form.address, { value -> viewModel.editIdentification { it.copy(address = value) } }, label = { Text("IPv4 del objetivo") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(form.vendor, { value -> viewModel.editIdentification { it.copy(vendor = value) } }, label = { Text("Fabricante") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(form.product, { value -> viewModel.editIdentification { it.copy(product = value) } }, label = { Text("Producto") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(form.version, { value -> viewModel.editIdentification { it.copy(version = value) } }, label = { Text("Versión") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedButton(onClick = viewModel::toggleIdentificationSource) {
+                        Text(if (form.source == IdentificationSource.USER_DEVICE_LABEL) "Origen: etiqueta del equipo" else "Origen: panel de administración")
                     }
-                    val unfinished = listOf(address, vendor, product, version).any { it.isNotBlank() }
-                    if (unfinished) Text("Agrega o limpia los datos escritos antes de comenzar.")
-                    Button(onClick = { viewModel.start(identifications.toMap()) }, enabled = !unfinished) { Text("Evaluar revisión") }
+                    OutlinedButton(onClick = { viewModel.addIdentification(record.config.targetAddresses) }) { Text("Agregar identificación") }
+                    form.error?.let { Text(it) }
+                    form.identifications.keys.forEach { ip ->
+                        OutlinedButton(onClick = { viewModel.removeIdentification(ip) }) { Text("Quitar identificación de $ip") }
+                    }
+                    if (form.unfinished) Text("Agrega o limpia los datos escritos antes de comenzar.")
+                    Button(onClick = { viewModel.start() }, enabled = !form.unfinished) { Text("Evaluar revisión") }
                 }
                 is ScanEvaluationUiState.Running -> {
                     CircularProgressIndicator()

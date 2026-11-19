@@ -84,6 +84,36 @@ class ScanEvaluationViewModelTest {
         assertEquals(1, storage.saved.size)
     }
 
+    @Test fun `formulario e identificaciones sobreviven al recuperar el mismo ViewModel`() = runTest {
+        var sent: DeclaredIdentification? = null
+        val gateway = EvaluationGateway { input, _ ->
+            sent = input.identification
+            EvaluationOutcome.Success(response)
+        }
+        val first = vm(gateway)
+        advanceUntilIdle()
+        first.editIdentification { it.copy(address = address.toString(), vendor = "Acme", product = "Router", version = "1") }
+        val recreated = vm(gateway)
+        assertSame(first, recreated)
+        assertEquals("Router", recreated.identification.value.product)
+        recreated.addIdentification(config.targetAddresses)
+        assertEquals("Acme", recreated.identification.value.identifications[address]?.vendor)
+        assertFalse(recreated.identification.value.unfinished)
+        recreated.start(); advanceUntilIdle()
+        assertEquals("Router", sent?.product)
+    }
+
+    @Test fun `cambiar de cuenta limpia el formulario y las identificaciones`() = runTest {
+        val viewModel = vm(EvaluationGateway { _, _ -> EvaluationOutcome.Success(response) })
+        advanceUntilIdle()
+        viewModel.editIdentification { it.copy(address = address.toString(), vendor = "Acme", product = "Router", version = "1") }
+        viewModel.addIdentification(config.targetAddresses)
+        viewModel.editIdentification { it.copy(vendor = "Otro") }
+        sessions.state.value = SessionState.Guest
+        advanceUntilIdle()
+        assertEquals(ScanIdentificationState(), viewModel.identification.value)
+    }
+
     @Test fun `cambio de cuenta no publica ni guarda respuesta tardia`() = runTest {
         val release = CompletableDeferred<Unit>()
         val viewModel = vm(EvaluationGateway { _, _ -> withContext(NonCancellable) { release.await() }; EvaluationOutcome.Success(response) })
