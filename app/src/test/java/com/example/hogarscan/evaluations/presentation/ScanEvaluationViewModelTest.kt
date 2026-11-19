@@ -71,13 +71,17 @@ class ScanEvaluationViewModelTest {
     private var summaryStatus = SummarySyncStatus.PENDING
     private var retryResult = EvaluationSyncResult.PROCESSED
     private var retryCalls = 0
+    private var statusWait: CompletableDeferred<Unit>? = null
     private var rulesCalls = 0
     private var rulesResponse: EvaluationRules? = null
     private var rulesWait: CompletableDeferred<Unit>? = null
     private fun vm(gateway: EvaluationGateway): ScanEvaluationViewModel {
         val evaluator = EvaluateCompletedScan(sessions, gateway, { 1 })
         val workflow = EvaluationWorkflow(sessions, history, evaluator, storage::saveCompleted, { sync.syncPending(it) }, { 1 })
-        val adapter = DefaultScanEvaluationActions(storage, workflow, sync, { _, _ -> summaryStatus },
+        val adapter = DefaultScanEvaluationActions(storage, workflow, sync, { _, _ ->
+            statusWait?.let { withContext(NonCancellable) { it.await() } }
+            summaryStatus
+        },
             HttpRulesDataSource(ApiTransport { ApiResult.NetworkFailure }))
         val actions = object : ScanEvaluationActions by adapter {
             override suspend fun rules(): EvaluationRules? {
@@ -160,6 +164,8 @@ class ScanEvaluationViewModelTest {
         assertTrue(saved.message.contains("Cierra sesión"))
         assertFalse(saved.canRetrySync)
         assertEquals(response, saved.evaluations.single().result)
+        viewModel.load(); advanceUntilIdle()
+        assertFalse((viewModel.uiState.value as ScanEvaluationUiState.Saved).canRetrySync)
         viewModel.retrySync(); advanceUntilIdle()
         assertEquals(1, retryCalls)
     }
@@ -176,6 +182,17 @@ class ScanEvaluationViewModelTest {
         viewModel.load(); advanceUntilIdle()
         assertTrue((viewModel.uiState.value as ScanEvaluationUiState.Saved).message.contains("generación anterior"))
         assertFalse((viewModel.uiState.value as ScanEvaluationUiState.Saved).canRetrySync)
+    }
+
+    @Test fun `cambiar cuenta durante lectura del estado no publica evaluacion anterior`() = runTest {
+        val viewModel = vm(EvaluationGateway { _, _ -> EvaluationOutcome.Success(response) })
+        advanceUntilIdle()
+        statusWait = CompletableDeferred()
+        viewModel.start(); runCurrent()
+        assertEquals(1, storage.saved.size)
+        sessions.state.value = SessionState.Authenticated(session.copy(contextId = "other", userId = "other"))
+        runCurrent(); statusWait!!.complete(Unit); advanceUntilIdle()
+        assertTrue(viewModel.uiState.value is ScanEvaluationUiState.Error)
     }
 
     @Test fun `consulta de reglas conserva estado y no duplica la solicitud`() = runTest {

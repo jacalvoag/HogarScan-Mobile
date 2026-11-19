@@ -71,14 +71,21 @@ class DeleteSummariesViewModel(
             try {
                 val result = action.delete(expected)
                 currentCoroutineContext().ensureActive()
-                if (sessions.isCurrentSession(expected, nowMillis())) {
-                    mutableState.value = mutableState.value.copy(pending = false, message = result.message())
-                }
+                publishResult(expected, result.message())
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) {
-                if (sessions.isCurrentSession(expected, nowMillis())) mutableState.value = mutableState.value.copy(
-                    pending = false, message = DeleteSummariesOutcome.UNCONFIRMED.message())
+                publishResult(expected, DeleteSummariesOutcome.UNCONFIRMED.message())
             }
+        }
+    }
+
+    private fun publishResult(expected: SessionSnapshot, message: String) {
+        val current = (sessions.state.value as? SessionState.Authenticated)?.session
+        if (current == null || current.contextId != expected.contextId || current.userId != expected.userId) return
+        mutableState.value = if (sessions.isCurrentSession(expected, nowMillis())) {
+            mutableState.value.copy(session = current, pending = false, message = message)
+        } else {
+            DeleteSummariesUiState()
         }
     }
 

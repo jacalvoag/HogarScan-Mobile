@@ -53,6 +53,7 @@ class ScanEvaluationViewModel(
     private var job: Job? = null
     private var sequence = 0L
     private var rulesJob: Job? = null
+    private var generationRefreshRequired = false
     private var identity = identity(sessions.state.value)
 
     init {
@@ -64,6 +65,7 @@ class ScanEvaluationViewModel(
                     sequence++
                     job?.cancel()
                     mutableIdentification.value = ScanIdentificationState()
+                    generationRefreshRequired = false
                     rulesJob?.cancel()
                     mutableRules.value = EvaluationRulesUiState()
                     mutableState.value = ScanEvaluationUiState.Error("La sesión cambió. Vuelve al historial para continuar.")
@@ -201,7 +203,8 @@ class ScanEvaluationViewModel(
         outcome: EvaluationSyncResult? = null
     ): ScanEvaluationUiState.Saved {
         val status = actions.summaryStatus(scanId, session)
-        val refreshRequired = outcome == EvaluationSyncResult.GENERATION_REFRESH_REQUIRED
+        if (outcome == EvaluationSyncResult.GENERATION_REFRESH_REQUIRED) generationRefreshRequired = true
+        val refreshRequired = generationRefreshRequired
         val message = when {
             refreshRequired -> "La generación no coincide con el servidor. Cierra sesión y vuelve a iniciarla antes de sincronizar. El resumen permanece guardado sin cambios."
             status == SummarySyncStatus.CONFLICT -> "El servidor tiene otro contenido para esta revisión. El resumen quedó en conflicto y no se reenviará automáticamente."
