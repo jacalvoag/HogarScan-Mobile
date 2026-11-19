@@ -1,25 +1,48 @@
 # Integración de estadísticas
 
-La rama de integración conecta `statistics` a `AppContainer` y a la pestaña
-de estadísticas. Consume `GET /me/stats` a través de `SessionApiClient` y
-no recibe ni conserva tokens. Sus totales cuentan resúmenes sincronizados,
-no el historial local ni dispositivos únicos.
+La funcionalidad statistics está conectada a AppContainer y a la pestaña
+Estadísticas. Consume GET /me/stats mediante SessionApiClient y no recibe
+ni conserva tokens.
 
-Comportamiento para revisar con José:
+## Datos contabilizados
 
-1. `AppContainer` construye `HttpStatisticsGateway(sessionApiClient)` y entrega
-   el gateway y `sessionReader` a `StatisticsViewModel`.
-2. `StatisticsRoute` consulta al entrar o volver a la pestaña, y ofrece una
-   acción de actualización manual después de sincronizar o borrar resúmenes.
-3. El ViewModel limpia los datos al cambiar cuenta, contexto o generación, y
-   también cuando vence la sesión mientras la pantalla permanece abierta.
-   Descarta respuestas tardías y no muestra una respuesta cuya generación no
-   coincida con la sesión. La actualización de generación y el borrado remoto
-   se realizan mediante la infraestructura compartida.
-4. Ante una generación mayor devuelta por la API se actualiza la sesión y se
-   invalidan pendientes anteriores antes de volver a consultar. Una generación
-   inferior se presenta como error y nunca se adopta automáticamente.
+Los totales incluyen revisiones completas y evaluadas cuyos resúmenes
+se sincronizaron con la API.
 
-Las pruebas unitarias e instrumentadas usan datos y transporte simulados; la
-navegación a la pestaña está integrada. Quedan pendientes las pruebas contra la
-API real con sesión y las pruebas con dos cuentas en teléfonos.
+Guardar una revisión TCP en el historial local no incrementa por sí solo
+las estadísticas. Primero deben completarse la evaluación y la sincronización
+del resumen.
+
+Los conteos no representan dispositivos únicos. Una dirección puede
+contabilizarse en varias revisiones.
+
+## Comportamiento
+
+1. AppContainer construye HttpStatisticsGateway y proporciona el gateway
+   y SessionReader a StatisticsViewModel.
+2. StatisticsRoute consulta al entrar o volver a la pestaña y ofrece
+   actualización manual.
+3. El ViewModel limpia los datos al cambiar cuenta, contexto o generación,
+   y cuando vence la sesión. Descarta respuestas tardías de otros contextos.
+4. Una generación mayor devuelta por la API actualiza la sesión e invalida
+   pendientes anteriores antes de volver a consultar. Una generación inferior
+   se presenta como error.
+5. El borrado remoto de resúmenes conserva el historial local y modifica
+   únicamente las estadísticas de la cuenta correspondiente.
+6. Abrir una evaluación antigua no vuelve a crear un resumen eliminado.
+
+## Validación manual
+
+El 19 de noviembre de 2026 se confirmó en el teléfono:
+
+- Actualización de estadísticas después de evaluar y sincronizar.
+- Separación de los resultados de las cuentas A y B.
+- Cancelación y confirmación del borrado remoto.
+- Conservación del historial local después del borrado remoto.
+- Ausencia de recreación de resúmenes al abrir evaluaciones antiguas.
+- Conteo de una nueva revisión evaluada después del borrado.
+- Recuperación de conectividad y sincronización sin duplicar el conteo.
+- Navegación entre Estadísticas e Historial sin perder acceso a las revisiones.
+
+Las pruebas automatizadas con transporte simulado y estas comprobaciones
+manuales constituyen evidencias distintas.
