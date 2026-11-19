@@ -33,6 +33,7 @@ fun prepareEvaluatedScanSummary(
         val input = evaluation.input
         require(input.scanId == scan.id && input.ownerId == scan.ownerId)
         val probes = requireNotNull(resultsByAddress[input.address])
+        require(input.probes.all { submitted -> probes.single { it.port == submitted.port }.service == submitted.service })
         require(input.probes.map { it.port to it.outcome }.toSet() ==
             probes.map { it.port to it.outcome }.toSet())
     }

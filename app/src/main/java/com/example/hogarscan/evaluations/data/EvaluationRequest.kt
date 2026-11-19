@@ -10,7 +10,7 @@ data class EvaluationRequest(
     val identification: DeclaredIdentification?
 )
 
-data class RemoteProbe(val port: Int, val outcome: RemoteOutcome)
+data class RemoteProbe(val port: Int, val outcome: RemoteOutcome, val service: com.example.hogarscan.scan.domain.model.ServiceEvidence? = null)
 enum class RemoteOutcome { ACCEPTED, REFUSED, TIMEOUT, ERROR }
 
 fun EvaluationInput.toEvaluationRequest(): EvaluationRequest = EvaluationRequest(
@@ -20,7 +20,7 @@ fun EvaluationInput.toEvaluationRequest(): EvaluationRequest = EvaluationRequest
             ProbeOutcome.REJECTED -> RemoteOutcome.REFUSED
             ProbeOutcome.TIMED_OUT -> RemoteOutcome.TIMEOUT
             ProbeOutcome.ERROR -> RemoteOutcome.ERROR
-        })
+        }, probe.service)
     },
     identification = identification
 )

@@ -78,7 +78,7 @@ fun EvaluationScreen(
                 OutlinedTextField(value = form.product, onValueChange = { onFormChange(form.copy(product = it)) }, label = { Text("Producto (máximo 120)") }, isError = errors.product, enabled = editable, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = form.version, onValueChange = { onFormChange(form.copy(version = it)) }, label = { Text("Versión (máximo 80)") }, isError = errors.version, enabled = editable, modifier = Modifier.fillMaxWidth())
                 Text("¿De dónde obtuviste estos datos?")
-                IdentificationSource.entries.forEach { source ->
+                IdentificationSource.entries.filter { it != IdentificationSource.SERVICE_RESPONSE }.forEach { source ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         RadioButton(selected = form.source == source, onClick = { onFormChange(form.copy(source = source)) }, enabled = editable)
                         Text(if (source == IdentificationSource.USER_DEVICE_LABEL) "Etiqueta del dispositivo" else "Panel de administración")
@@ -118,7 +118,14 @@ fun EvaluationResultPanel(result: EvaluationResult, modifier: Modifier = Modifie
         Text("NVD: ${result.sources.nvd.description()} · KEV: ${result.sources.kev.description()}")
         result.sources.checkedAt?.let { Text("Fuentes consultadas: $it") }
         if (result.findings.isEmpty()) Text("La evaluación no devolvió hallazgos.")
-        result.findings.forEachIndexed { index, finding ->
+        result.findings.withIndex().sortedBy { (_, finding) ->
+            when (finding.priority) {
+                FindingPriority.HIGH -> 0
+                FindingPriority.MEDIUM -> 1
+                FindingPriority.LOW -> 2
+                FindingPriority.UNDETERMINED -> 3
+            }
+        }.forEach { (index, finding) ->
             val cardModifier = if (onFindingClick == null) Modifier else Modifier.clickable(onClickLabel = "Ver detalle del hallazgo") { onFindingClick(index) }
             OutlinedCard(modifier = cardModifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -139,8 +146,8 @@ fun EvaluationResultPanel(result: EvaluationResult, modifier: Modifier = Modifie
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Coincidencia posible: ${match.cve}", style = MaterialTheme.typography.titleMedium)
                     Text("No confirma una vulnerabilidad en el dispositivo.")
-                    Text("Identificación declarada: ${match.vendor} ${match.product} ${match.version}")
-                    Text("Procedencia: ${if (match.identificationSource == IdentificationSource.USER_DEVICE_LABEL) "etiqueta del dispositivo" else "panel de administración"}")
+                    Text("Identificación: ${match.vendor} ${match.product} ${match.version}")
+                    Text("Procedencia: ${when (match.identificationSource) { IdentificationSource.USER_DEVICE_LABEL -> "etiqueta del dispositivo"; IdentificationSource.USER_ADMIN_PANEL -> "panel de administración"; IdentificationSource.SERVICE_RESPONSE -> "respuesta del servicio en puerto ${match.servicePort}; identidad anunciada, no certificada" }}")
                     Text("Condición: ${match.affectedCondition}")
                     Text("NVD: ${match.nvdUrl} · Consultado: ${match.nvdCheckedAt}")
                     Text(when (match.inKev) {

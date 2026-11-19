@@ -35,6 +35,8 @@ fun ScanEvaluationPanel(viewModel: ScanEvaluationViewModel, record: ScanRecord, 
             when (val current = state) {
                 ScanEvaluationUiState.Loading -> CircularProgressIndicator()
                 ScanEvaluationUiState.Ready -> {
+                    Text("Se usarán las identidades anunciadas por los servicios cuando sean inequívocas; no certifican el producto instalado.")
+                    ObservedIdentificationsPanel(record, viewModel::useObservedIdentification)
                     Text("Puedes agregar una identificación declarada para cada dirección antes de evaluar. Es opcional y no se verifica automáticamente.")
                     OutlinedTextField(form.address, { value -> viewModel.editIdentification { it.copy(address = value) } }, label = { Text("IPv4 del objetivo") }, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(form.vendor, { value -> viewModel.editIdentification { it.copy(vendor = value) } }, label = { Text("Fabricante") }, modifier = Modifier.fillMaxWidth())

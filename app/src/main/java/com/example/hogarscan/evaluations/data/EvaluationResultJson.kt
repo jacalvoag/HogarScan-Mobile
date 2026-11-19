@@ -42,6 +42,7 @@ internal object EvaluationResultJson {
                 writer.name("product").value(match.product)
                 writer.name("version").value(match.version)
                 writer.name("identification_source").value(match.identificationSource.name)
+                match.servicePort?.let { writer.name("service_port").value(it.toLong()) }
                 writer.name("affected_condition").value(match.affectedCondition)
                 writer.name("nvd_url").value(match.nvdUrl)
                 writer.name("nvd_checked_at").value(match.nvdCheckedAt)

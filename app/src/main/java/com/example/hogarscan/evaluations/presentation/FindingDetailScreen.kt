@@ -115,10 +115,10 @@ fun FindingDetailScreen(detail: FindingDetail, onBack: () -> Unit, modifier: Mod
                     detail.checkedAt?.let { Text("Consulta: $it", color = Color(0xFF5F5E5E), fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
                     val match = detail.possibleMatch
                     if (match == null) {
-                        Text("No se presenta una coincidencia CVE para este hallazgo.", color = Color(0xFF454838), fontSize = 14.sp, lineHeight = 20.sp)
+                        Text("Este hallazgo no contiene una coincidencia CVE. Las posibles coincidencias se presentan como hallazgos independientes en la evaluación.", color = Color(0xFF454838), fontSize = 14.sp, lineHeight = 20.sp)
                     } else {
                         Text("Coincidencia posible: ${match.cve}. No confirma una vulnerabilidad.", color = Color(0xFF454838), fontSize = 14.sp, lineHeight = 20.sp)
-                        Text("Identificación declarada: ${match.declaredProduct} (${match.declaredSource})", color = Color(0xFF454838), fontSize = 14.sp, lineHeight = 20.sp)
+                        Text("Identificación: ${match.declaredProduct} (${match.declaredSource})", color = Color(0xFF454838), fontSize = 14.sp, lineHeight = 20.sp)
                         Text("Condición: ${match.affectedCondition}", color = Color(0xFF454838), fontSize = 14.sp, lineHeight = 20.sp)
                         Text(match.kevMembership, color = Color(0xFF454838), fontSize = 14.sp, lineHeight = 20.sp)
                         val uriHandler = LocalUriHandler.current

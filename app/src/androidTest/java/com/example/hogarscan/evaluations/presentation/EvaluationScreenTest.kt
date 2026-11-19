@@ -56,4 +56,19 @@ class EvaluationScreenTest {
         compose.onNodeWithText("La evaluación no devolvió hallazgos.").assertIsDisplayed()
         assertEquals(SourceState.UNAVAILABLE, result.sources.nvd)
     }
+    @Test fun prioridadDeRevisionOrdenaLaVistaSinCambiarElIndiceDelHallazgo() {
+        val low = com.example.hogarscan.evaluations.domain.model.Finding(
+            com.example.hogarscan.evaluations.domain.model.FindingCategory.TCP_SERVICE_ACCESSIBLE, "Observación TCP",
+            com.example.hogarscan.evaluations.domain.model.FindingPriority.LOW,
+            com.example.hogarscan.evaluations.domain.model.FindingConfidence.OBSERVED,
+            "Evidencia", "Explicación", "Acción", "Límite", "TCP_ACCEPTED", null)
+        val high = low.copy(title = "Revisión prioritaria", priority = com.example.hogarscan.evaluations.domain.model.FindingPriority.HIGH)
+        var selected = -1
+        val result = EvaluationResult("0.4.0", "2026-11-19T16:00:00Z",
+            EvaluationSources(SourceState.NOT_QUERIED, SourceState.NOT_QUERIED, null), listOf(low, high), emptyList())
+        compose.setContent { MaterialTheme { EvaluationResultPanel(result, onFindingClick = { selected = it }) } }
+        compose.onNodeWithText("Revisión prioritaria").performClick()
+        compose.runOnIdle { assertEquals(1, selected) }
+    }
+
 }

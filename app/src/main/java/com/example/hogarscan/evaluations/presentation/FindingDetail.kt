@@ -90,10 +90,11 @@ private fun SourceState.label(): String = when (this) {
 
 private fun PossibleCveMatch.toDetail() = PossibleCveDetail(
     cve = cve,
-    declaredProduct = "$vendor · $product · $version",
+    declaredProduct = "$vendor · $product · $version" + (servicePort?.let { " · puerto $it" } ?: ""),
     declaredSource = when (identificationSource) {
         com.example.hogarscan.evaluations.domain.model.IdentificationSource.USER_DEVICE_LABEL -> "Etiqueta del dispositivo"
         com.example.hogarscan.evaluations.domain.model.IdentificationSource.USER_ADMIN_PANEL -> "Panel de administración"
+        com.example.hogarscan.evaluations.domain.model.IdentificationSource.SERVICE_RESPONSE -> "Identidad anunciada por el servicio; no verificada independientemente"
     },
     affectedCondition = affectedCondition,
     nvdUrl = nvdUrl,

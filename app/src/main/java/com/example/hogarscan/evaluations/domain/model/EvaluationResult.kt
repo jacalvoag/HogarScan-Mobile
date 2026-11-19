@@ -36,7 +36,8 @@ data class PossibleCveMatch(
     val affectedCondition: String,
     val nvdUrl: String,
     val nvdCheckedAt: String,
-    val inKev: Boolean?
+    val inKev: Boolean?,
+    val servicePort: Int? = null
 )
 
 data class EvaluationResult(

@@ -140,6 +140,11 @@ class ScanEvaluationViewModel(
         }
     }
 
+    fun useObservedIdentification(address: Ipv4Address, identification: DeclaredIdentification) = editIdentification {
+        require(identification.source == IdentificationSource.SERVICE_RESPONSE)
+        ScanIdentificationState(identifications = it.identifications + (address to identification))
+    }
+
     fun removeIdentification(address: Ipv4Address) = editIdentification {
         it.copy(identifications = it.identifications - address)
     }
