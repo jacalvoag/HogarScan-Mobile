@@ -6,6 +6,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.room.Room
 import com.example.hogarscan.scan.data.local.HogarScanDatabase
+import com.example.hogarscan.scan.data.local.repository.RoomDeleteLocalScan
 import com.example.hogarscan.scan.data.local.repository.RoomScanHistoryRepository
 import com.example.hogarscan.scan.data.network.AndroidTcpProbe
 import com.example.hogarscan.scan.data.network.AndroidWifiNetworkRepository
@@ -244,7 +245,8 @@ class AppContainer(context: Context) {
                     repository = scanHistoryRepository,
                     owners = historyOwnerResolver,
                     sessions = sessionReader,
-                    savedStateHandle = createSavedStateHandle()
+                    savedStateHandle = createSavedStateHandle(),
+                    deleteLocal = RoomDeleteLocalScan(database, sessionStore, localHistoryOwner::getOwnerId)
                 )
             }
         }

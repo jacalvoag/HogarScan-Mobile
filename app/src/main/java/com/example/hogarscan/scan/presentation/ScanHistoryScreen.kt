@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -43,6 +46,14 @@ fun ScanHistoryRoute(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val detailState by viewModel.detailState.collectAsStateWithLifecycle()
+    val deletion by viewModel.deletion.collectAsStateWithLifecycle()
+    if (deletion.confirmation != null) {
+        AlertDialog(onDismissRequest = viewModel::cancelDeletion,
+            title = { Text("¿Borrar esta revisión del teléfono?") },
+            text = { Text("Se eliminarán sus resultados, evaluaciones y pendientes locales. Un envío ya iniciado puede terminar. Los resúmenes del servidor no se borran.") },
+            dismissButton = { TextButton(onClick = viewModel::cancelDeletion) { Text("Cancelar") } },
+            confirmButton = { TextButton(onClick = viewModel::confirmDeletion) { Text("Borrar revisión local") } })
+    }
     val listState = rememberLazyListState()
     var selectedFinding by remember { mutableStateOf<SelectedFinding?>(null) }
     val loaded = detailState as? ScanDetailUiState.Loaded
@@ -64,6 +75,7 @@ fun ScanHistoryRoute(
         ScanHistoryScreen(
             state = state,
             onRetry = viewModel::retry,
+            message = deletion.message,
             onOpenRecord = viewModel::openDetail,
             listState = listState,
             modifier = modifier
@@ -75,7 +87,11 @@ fun ScanHistoryRoute(
             onRetry = viewModel::retryDetail,
             modifier = modifier,
             evaluationContent = { record ->
-                if (evaluationFactory != null) {
+                if (record.status != ScanRecordStatus.RUNNING) {
+                    OutlinedButton(enabled = !deletion.pending, onClick = viewModel::requestDeletion) { Text("Borrar esta revisión del teléfono") }
+                }
+                deletion.message?.let { Text(it) }
+                if (record.status == ScanRecordStatus.COMPLETED && evaluationFactory != null) {
                     val evaluationViewModel: ScanEvaluationViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
                         key = "scan-evaluation:${record.id}",
                         factory = evaluationFactory(record.id, record.ownerId)
@@ -95,6 +111,7 @@ private data class SelectedFinding(val scanId: String, val ownerId: String, val 
 private fun ScanHistoryScreen(
     state: ScanHistoryUiState,
     onRetry: () -> Unit,
+    message: String? = null,
     onOpenRecord: (String) -> Unit,
     listState: LazyListState,
     modifier: Modifier = Modifier
@@ -108,6 +125,7 @@ private fun ScanHistoryScreen(
         item {
             Text("Historial", style = MaterialTheme.typography.headlineMedium)
             Text("Revisiones guardadas en este dispositivo.")
+            message?.let { Text(it) }
         }
 
         when (state) {
