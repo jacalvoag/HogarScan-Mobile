@@ -36,14 +36,16 @@ internal object EvaluationResponseJson {
             val product = m.string("product")
             val version = m.string("version")
             val source = enumValueOf<IdentificationSource>(m.string("identification_source"))
-            DeclaredIdentification(vendor, product, version, source)
+            val servicePort = m["service_port"]?.let { (it as? JsonNumber)?.value?.toBigDecimal()?.intValueExact()
+                ?: throw IllegalArgumentException("Puerto de servicio no válido") }
+            DeclaredIdentification(vendor, product, version, source, servicePort)
             val condition = m.string("affected_condition")
             require(condition.isNotEmpty())
             val url = m.string("nvd_url")
             require(url == "https://nvd.nist.gov/vuln/detail/$cve")
             val inKev = m.nullableBoolean("in_kev")
             PossibleCveMatch(cve, vendor, product, version, source, condition, url,
-                m.string("nvd_checked_at").timestamp(), inKev)
+                m.string("nvd_checked_at").timestamp(), inKev, servicePort)
         }
         val findingCves = findings.mapNotNull { it.cve }
         val matchCves = matches.map { it.cve }

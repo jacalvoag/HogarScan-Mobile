@@ -20,5 +20,6 @@ data class ScanEvaluationEntity(
     val vendor: String?,
     val product: String?,
     val version: String?,
-    @ColumnInfo(name = "identification_source") val identificationSource: String?
+    @ColumnInfo(name = "identification_source") val identificationSource: String?,
+    @ColumnInfo(name = "service_port") val servicePort: Int? = null
 )

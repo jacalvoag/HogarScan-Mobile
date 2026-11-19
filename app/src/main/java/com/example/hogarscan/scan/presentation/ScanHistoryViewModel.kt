@@ -8,6 +8,8 @@ import com.example.hogarscan.auth.domain.repository.SessionReader
 import com.example.hogarscan.scan.domain.model.ScanRecord
 import com.example.hogarscan.scan.domain.model.ScanRecordSummary
 import com.example.hogarscan.scan.domain.repository.ScanHistoryRepository
+import com.example.hogarscan.scan.domain.usecase.DeleteLocalScan
+import com.example.hogarscan.scan.domain.usecase.LocalScanDeletion
 import com.example.hogarscan.scan.domain.usecase.HistoryOwnerContext
 import com.example.hogarscan.scan.domain.usecase.HistoryOwnerResolver
 import kotlinx.coroutines.CancellationException
@@ -40,7 +42,8 @@ class ScanHistoryViewModel(
     private val owners: HistoryOwnerResolver,
     private val sessions: SessionReader,
     private val savedStateHandle: SavedStateHandle = SavedStateHandle(),
-    private val nowMillis: () -> Long = System::currentTimeMillis
+    private val nowMillis: () -> Long = System::currentTimeMillis,
+    private val deleteLocal: DeleteLocalScan? = null
 ) : ViewModel() {
 
     private val _uiState =
@@ -50,6 +53,55 @@ class ScanHistoryViewModel(
     private val _detailState =
         MutableStateFlow<ScanDetailUiState>(ScanDetailUiState.Closed)
     val detailState: StateFlow<ScanDetailUiState> = _detailState.asStateFlow()
+
+    data class DeletionState(val confirmation: ScanRecord? = null, val pending: Boolean = false, val message: String? = null)
+    private val mutableDeletion = MutableStateFlow(DeletionState())
+    val deletion = mutableDeletion.asStateFlow()
+    private var deletionOwner: HistoryOwnerContext? = null
+    private var deletionJob: Job? = null
+
+    fun requestDeletion() {
+        if (mutableDeletion.value.pending || deleteLocal == null) return
+        val record = (_detailState.value as? ScanDetailUiState.Loaded)?.record ?: return
+        if (record.status == com.example.hogarscan.scan.domain.model.ScanRecordStatus.RUNNING) return
+        viewModelScope.launch {
+            val owner = owners.resolve() ?: return@launch
+            if (owners.isCurrent(owner) && owner.ownerId == record.ownerId &&
+                (_detailState.value as? ScanDetailUiState.Loaded)?.record?.id == record.id) {
+                deletionOwner = owner
+                mutableDeletion.value = DeletionState(confirmation = record)
+            }
+        }
+    }
+
+    fun cancelDeletion() {
+        if (!mutableDeletion.value.pending) { deletionOwner = null; mutableDeletion.value = DeletionState() }
+    }
+
+    fun confirmDeletion() {
+        val state = mutableDeletion.value
+        val record = state.confirmation ?: return
+        val owner = deletionOwner ?: return
+        val action = deleteLocal ?: return
+        if (state.pending || !owners.isCurrent(owner)) { cancelDeletion(); return }
+        mutableDeletion.value = DeletionState(pending = true)
+        deletionJob = viewModelScope.launch {
+            try {
+                val result = action.delete(record.id, owner)
+                currentCoroutineContext().ensureActive()
+                if (!owners.isCurrent(owner)) return@launch
+                if (result == LocalScanDeletion.DELETED || result == LocalScanDeletion.NOT_FOUND) {
+                    closeDetail()
+                    mutableDeletion.value = DeletionState(message = "Revisión eliminada del teléfono. Los resúmenes del servidor permanecen.")
+                } else {
+                    mutableDeletion.value = DeletionState(message = "No se borró la revisión: está en curso o cambió la sesión.")
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                if (owners.isCurrent(owner)) mutableDeletion.value = DeletionState(message = "No se pudo borrar la revisión.")
+            }
+        }
+    }
 
     private var observationJob: Job? = null
     private var detailJob: Job? = null
@@ -69,6 +121,9 @@ class ScanHistoryViewModel(
             sessions.state.collect { currentState ->
                 if (!sameSession(previousState, currentState)) {
                     previousState = currentState
+                    deletionJob?.cancel()
+                    deletionOwner = null
+                    mutableDeletion.value = DeletionState()
 
                     // La selección recuperada se validará por propietario.
                     if (!restorationPending) {

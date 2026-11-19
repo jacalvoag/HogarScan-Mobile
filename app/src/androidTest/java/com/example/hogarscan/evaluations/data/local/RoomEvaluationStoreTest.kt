@@ -82,4 +82,65 @@ class RoomEvaluationStoreTest {
         assertTrue(db.scanSummaryDao().findPending(user, 1).isEmpty())
         assertTrue(db.scanEvaluationDao().findByScan(scanId, scan.ownerId).isEmpty())
     }
+    @Test fun borrarRevisionEliminaDetalleEvaluacionesYPendienteSoloDelPropietario() = runBlocking {
+        val session = requireNotNull(sessions.activate(credentials(user)))
+        db.scanRecordDao().insertWithDetails(scan.toLocal())
+        val store = RoomEvaluationStore(db, sessions)
+        store.saveCompleted(scanId, listOf(evaluation), session)
+        val other = scan.toLocal().let { it.copy(record = it.record.copy(id = "other", ownerId = "user:other"),
+            ports = it.ports.map { port -> port.copy(scanId = "other") },
+            results = it.results.map { probe -> probe.copy(scanId = "other") }) }
+        db.scanRecordDao().insertWithDetails(other)
+        val deletion = com.example.hogarscan.scan.data.local.repository.RoomDeleteLocalScan(db, sessions) { "local:guest" }
+        val context = com.example.hogarscan.scan.domain.usecase.HistoryOwnerContext(scan.ownerId, session)
+        assertEquals(com.example.hogarscan.scan.domain.usecase.LocalScanDeletion.DELETED, deletion.delete(scanId, context))
+        assertNull(db.scanRecordDao().findById(scanId, scan.ownerId))
+        assertTrue(db.scanEvaluationDao().findByScan(scanId, scan.ownerId).isEmpty())
+        assertTrue(db.scanSummaryDao().findPending(user, 1).isEmpty())
+        assertNotNull(db.scanRecordDao().findById("other", "user:other"))
+    }
+
+    @Test fun borradoLocalRechazaContextoAnteriorYRevisionesEnCurso() = runBlocking {
+        val first = requireNotNull(sessions.activate(credentials(user)))
+        db.scanRecordDao().insertWithDetails(scan.toLocal())
+        val deletion = com.example.hogarscan.scan.data.local.repository.RoomDeleteLocalScan(db, sessions) { "local:guest" }
+        sessions.activate(credentials("a32807a8-c54a-47a5-8a4e-63093fcb0bda"))
+        assertEquals(com.example.hogarscan.scan.domain.usecase.LocalScanDeletion.SESSION_CHANGED,
+            deletion.delete(scanId, com.example.hogarscan.scan.domain.usecase.HistoryOwnerContext(scan.ownerId, first)))
+        assertNotNull(db.scanRecordDao().findById(scanId, scan.ownerId))
+        val current = requireNotNull(sessions.activate(credentials(user)))
+        val active = ScanRecord("running", scan.ownerId, config, 10, ScanRecordStatus.RUNNING, summaryGeneration = 1)
+        db.scanRecordDao().insertWithDetails(active.toLocal())
+        assertEquals(com.example.hogarscan.scan.domain.usecase.LocalScanDeletion.IN_PROGRESS,
+            deletion.delete(active.id, com.example.hogarscan.scan.domain.usecase.HistoryOwnerContext(active.ownerId, current)))
+        assertNotNull(db.scanRecordDao().findById(active.id, active.ownerId))
+    }
+
+    @Test fun protocoloEIdentidadAnunciadaSeConservanTrasGuardarYCargar() = runBlocking {
+        val session = requireNotNull(sessions.activate(credentials(user)))
+        val observed = probe.copy(service = ServiceEvidence(ServiceProtocol.HTTP, "apache", "http_server", "2.4.49"))
+        val record = ScanRecord(scanId, scan.ownerId, config, 10, ScanRecordStatus.COMPLETED, listOf(observed), 20, 1)
+        db.scanRecordDao().insertWithDetails(record.toLocal())
+        val input = EvaluationInput.fromResults(scanId, scan.ownerId, address, listOf(observed))
+        val store = RoomEvaluationStore(db, sessions)
+        store.saveCompleted(scanId, listOf(TargetEvaluation(input, response)), session)
+        val loaded = store.load(scanId, session)!!.single()
+        assertEquals(observed.service, loaded.input.probes.single().service)
+        assertEquals(IdentificationSource.SERVICE_RESPONSE, loaded.input.identification!!.source)
+        assertEquals(80, loaded.input.identification!!.servicePort)
+    }
+
+    @Test fun invitadoSoloPuedeBorrarSuPerfilLocal() = runBlocking {
+        sessions.restore()
+        val guest = ScanRecord(scanId, "local:guest", config, 10, ScanRecordStatus.COMPLETED, listOf(probe), 20)
+        db.scanRecordDao().insertWithDetails(guest.toLocal())
+        val deletion = com.example.hogarscan.scan.data.local.repository.RoomDeleteLocalScan(db, sessions) { "local:guest" }
+        assertEquals(com.example.hogarscan.scan.domain.usecase.LocalScanDeletion.SESSION_CHANGED,
+            deletion.delete(scanId, com.example.hogarscan.scan.domain.usecase.HistoryOwnerContext("local:other", null)))
+        assertNotNull(db.scanRecordDao().findById(scanId, guest.ownerId))
+        assertEquals(com.example.hogarscan.scan.domain.usecase.LocalScanDeletion.DELETED,
+            deletion.delete(scanId, com.example.hogarscan.scan.domain.usecase.HistoryOwnerContext(guest.ownerId, null)))
+        assertNull(db.scanRecordDao().findById(scanId, guest.ownerId))
+    }
+
 }

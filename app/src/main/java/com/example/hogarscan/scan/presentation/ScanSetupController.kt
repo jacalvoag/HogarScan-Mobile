@@ -32,6 +32,7 @@ class ScanSetupController {
         require(port in ScanPolicy.allowedPorts) {
             "El puerto no pertenece a los permitidos."
         }
+        if (port !in state.selectedPorts && state.selectedPorts.size >= 6) return
         val ports = if (port in state.selectedPorts) {
             state.selectedPorts - port
         } else {

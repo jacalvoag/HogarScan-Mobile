@@ -43,7 +43,7 @@ class RoomEvaluationStore(
                 val identification = evaluation.input.identification
                 ScanEvaluationEntity(scanId, evaluation.input.address.value,
                     EvaluationResultJson.encode(evaluation.result), identification?.vendor,
-                    identification?.product, identification?.version, identification?.source?.name)
+                    identification?.product, identification?.version, identification?.source?.name, identification?.servicePort)
             }
         }
         return sessions.withCurrentSession(expected) {
@@ -72,7 +72,7 @@ class RoomEvaluationStore(
                     val identification = if (row.vendor == null && row.product == null &&
                         row.version == null && row.identificationSource == null) null else {
                         DeclaredIdentification(requireNotNull(row.vendor), requireNotNull(row.product),
-                            requireNotNull(row.version), enumValueOf<IdentificationSource>(requireNotNull(row.identificationSource)))
+                            requireNotNull(row.version), enumValueOf<IdentificationSource>(requireNotNull(row.identificationSource)), row.servicePort)
                     }
                     val input = EvaluationInput.fromResults(scan.id, scan.ownerId, address,
                         scan.results.filter { it.address == address }, identification)

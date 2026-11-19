@@ -22,6 +22,10 @@ internal object EvaluationRequestJson {
                 writer.beginObject()
                 writer.name("port").value(probe.port.toLong())
                 writer.name("outcome").value(probe.outcome.name)
+                probe.service?.let {
+                    writer.name("protocol").value(it.protocol.name)
+                    writer.name("evidence_kind").value(it.protocol.evidenceKind)
+                }
                 writer.endObject()
             }
             writer.endArray()
@@ -31,6 +35,7 @@ internal object EvaluationRequestJson {
                 writer.name("product").value(identification.product)
                 writer.name("version").value(identification.version)
                 writer.name("source").value(identification.source.name)
+                identification.servicePort?.let { writer.name("service_port").value(it.toLong()) }
                 writer.endObject()
             }
             writer.endObject()

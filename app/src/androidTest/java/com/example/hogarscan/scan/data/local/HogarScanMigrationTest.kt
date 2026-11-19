@@ -5,6 +5,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.hogarscan.scan.data.local.HogarScanMigrations.MIGRATION_1_2
+import com.example.hogarscan.scan.data.local.HogarScanMigrations.MIGRATION_3_4
 import com.example.hogarscan.scan.data.local.HogarScanMigrations.MIGRATION_2_3
 import com.example.hogarscan.scan.domain.model.Ipv4Address
 import org.junit.Assert.assertEquals
@@ -113,6 +114,19 @@ class HogarScanMigrationTest {
                 assertTrue(cursor.moveToFirst())
                 assertEquals(0, cursor.getInt(0))
             }
+        }
+    }
+
+    @Test fun migrationAddsServiceEvidenceWithoutInventingItForOldRecords() {
+        val name = "hogarscan-migration-1-4"
+        helper.createDatabase(name, 1).use { db -> insertLegacyRecord(db, "old", "local:guest") }
+        helper.runMigrationsAndValidate(name, 4, true, MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).use { db ->
+            db.query("SELECT service_protocol, service_vendor, service_product, service_version FROM probe_results").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                repeat(4) { assertTrue(cursor.isNull(it)) }
+                assertFalse(cursor.moveToNext())
+            }
+            db.query("SELECT COUNT(*) FROM scan_records").use { cursor -> assertTrue(cursor.moveToFirst()); assertEquals(1, cursor.getInt(0)) }
         }
     }
 

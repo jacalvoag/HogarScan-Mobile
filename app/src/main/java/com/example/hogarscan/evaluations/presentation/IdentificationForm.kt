@@ -16,7 +16,7 @@ data class IdentificationForm(
             vendor = vendor.isBlank() || vendor.length > 80,
             product = product.isBlank() || product.length > 120,
             version = version.isBlank() || version.length > 80,
-            source = source == null
+            source = source == null || source == IdentificationSource.SERVICE_RESPONSE
         )
         if (errors.vendor || errors.product || errors.version || errors.source) {
             return IdentificationValidation.Invalid(errors)

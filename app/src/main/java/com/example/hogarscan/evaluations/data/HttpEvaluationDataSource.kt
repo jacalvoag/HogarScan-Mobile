@@ -47,7 +47,7 @@ class HttpEvaluationDataSource(private val client: SessionApiClient) {
                 val declared = input.identification
                 declared == null || match.vendor != declared.vendor ||
                     match.product != declared.product || match.version != declared.version ||
-                    match.identificationSource != declared.source
+                    match.identificationSource != declared.source || match.servicePort != declared.servicePort
             }) return invalid()
         return EvaluationRemoteResult.Success(result)
     }

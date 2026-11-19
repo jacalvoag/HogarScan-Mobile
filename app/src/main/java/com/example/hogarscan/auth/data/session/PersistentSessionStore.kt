@@ -109,6 +109,12 @@ class PersistentSessionStore(
         block()
     }
 
+    /** Protege el borrado del perfil invitado frente a un login concurrente. */
+    suspend fun <T : Any> withGuestSession(block: suspend () -> T): T? = mutex.withLock {
+        if (state.value != SessionState.Guest) return@withLock null
+        block()
+    }
+
     suspend fun updateSummaryGeneration(
         expected: SessionSnapshot,
         generation: Int

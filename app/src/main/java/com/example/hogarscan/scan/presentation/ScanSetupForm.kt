@@ -74,14 +74,14 @@ fun ScanSetupForm(
             modifier = Modifier.fillMaxWidth()
         )
 
-        Text("Puertos")
+        Text("Puertos (elige hasta seis)")
         ScanPolicy.allowedPorts.sorted().forEach { port ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .toggleable(
                         value = port in state.selectedPorts,
-                        enabled = enabled,
+                        enabled = enabled && (port in state.selectedPorts || state.selectedPorts.size < 6),
                         role = Role.Checkbox,
                         onValueChange = { onPortToggle(port) }
                     )

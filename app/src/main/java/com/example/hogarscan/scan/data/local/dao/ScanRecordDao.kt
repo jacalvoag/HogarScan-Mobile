@@ -16,6 +16,9 @@ import com.example.hogarscan.scan.domain.model.ScanRecordStatus
 
 @Dao
 abstract class ScanRecordDao {
+    @Query("DELETE FROM scan_records WHERE id = :scanId AND owner_id = :ownerId AND execution_status != 'RUNNING'")
+    abstract suspend fun deleteClosedRecord(scanId: String, ownerId: String): Int
+
 
     @Transaction
     open suspend fun insertWithDetails(details: ScanRecordWithDetails) {

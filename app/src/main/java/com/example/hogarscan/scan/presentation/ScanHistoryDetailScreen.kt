@@ -81,7 +81,17 @@ fun ScanHistoryDetailScreen(
                 }
 
                 ScanResultsPanel(state = record.toDetailState())
-                if (record.status == ScanRecordStatus.COMPLETED) evaluationContent(record)
+                val evidence = record.results.filter { it.service != null }
+                if (evidence.isNotEmpty()) {
+                    Text("Protocolos observados", style = MaterialTheme.typography.titleMedium)
+                    evidence.take(30).forEach { probe ->
+                        val service = requireNotNull(probe.service)
+                        Text("${probe.address}:${probe.port} · ${service.protocol}" +
+                            (service.product?.let { " · anuncia $it ${service.version}" } ?: " · producto/versión no identificados"))
+                    }
+                    if (evidence.size > 30) Text("${evidence.size} servicios identificados; el resto está disponible en la evaluación.")
+                }
+                evaluationContent(record)
             }
         }
     }
