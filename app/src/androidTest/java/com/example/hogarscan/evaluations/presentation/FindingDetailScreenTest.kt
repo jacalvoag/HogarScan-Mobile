@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -36,27 +37,16 @@ class FindingDetailScreenTest {
         compose.setContent { MaterialTheme { FindingDetailScreen(detail, { back = true }) } }
         compose.onNodeWithText("Conexión aceptada").assertIsDisplayed()
         compose.onNodeWithText("Esto no confirma una vulnerabilidad").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Ver fuentes públicas").performScrollTo().performClick()
         compose.onNodeWithText("NVD: No consultada · KEV: No consultada").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("VOLVER AL EQUIPO").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Volver").performScrollTo().performClick()
         compose.runOnIdle { assertTrue(back) }
     }
 
-    @Test fun recursosSvgExistenYUsanLasDimensionesDelDiseno() {
+    @Test fun iconoDeRegresoCoincideConElDisenoRevisado() {
         val assets = InstrumentationRegistry.getInstrumentation().targetContext.assets
-        val names = listOf("back.svg", "info.svg", "priority.svg", "certainty.svg", "guidance.svg", "sources.svg", "source_state.svg", "return.svg")
-        names.forEach { name ->
-            val svg = SVG.getFromAsset(assets, "figma/finding_detail/$name")
-            assertTrue(svg.documentWidth > 0f && svg.documentHeight > 0f)
-        }
-        compose.setContent { MaterialTheme { FindingDetailScreen(detail, {}) } }
-        compose.onNodeWithTag("finding-icon-back.svg").assertWidthIsEqualTo(13.3333.dp).assertHeightIsEqualTo(13.3333.dp)
-        compose.onNodeWithTag("finding-icon-info.svg").assertWidthIsEqualTo(15.8333.dp).assertHeightIsEqualTo(15.8333.dp)
-        compose.onNodeWithTag("finding-icon-priority.svg").assertWidthIsEqualTo(12.dp).assertHeightIsEqualTo(15.dp)
-        compose.onNodeWithTag("finding-icon-certainty.svg").assertWidthIsEqualTo(13.3333.dp).assertHeightIsEqualTo(16.dp)
-        compose.onNodeWithTag("finding-icon-guidance.svg").assertWidthIsEqualTo(16.6667.dp).assertHeightIsEqualTo(15.dp)
-        compose.onNodeWithTag("finding-icon-sources.svg").assertWidthIsEqualTo(13.3333.dp).assertHeightIsEqualTo(16.6667.dp)
-        compose.onNodeWithTag("finding-icon-source_state.svg").assertWidthIsEqualTo(15.dp).assertHeightIsEqualTo(12.0562.dp)
-        compose.onNodeWithTag("finding-icon-return.svg").assertWidthIsEqualTo(16.6667.dp).assertHeightIsEqualTo(13.3333.dp)
+        val svg = SVG.getFromAsset(assets, "figma/revised/back.svg")
+        assertTrue(svg.documentWidth == 24f && svg.documentHeight == 24f)
     }
 
     @Test fun capturaPantallaParaRevisionVisual() {
@@ -67,9 +57,10 @@ class FindingDetailScreenTest {
             File(dir, name).outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         }
         capture("finding-detail-top.png")
-        compose.onNodeWithText("3. QUÉ PUEDES REVISAR").performScrollTo()
+        compose.onNodeWithText("Qué puedes revisar").performScrollTo()
         capture("finding-detail-middle.png")
-        compose.onNodeWithText("VOLVER AL EQUIPO").performScrollTo()
+        compose.onNodeWithText("Ver fuentes públicas").performScrollTo().performClick()
+        compose.onNodeWithText("NVD: No consultada · KEV: No consultada").performScrollTo()
         capture("finding-detail-bottom.png")
     }
 

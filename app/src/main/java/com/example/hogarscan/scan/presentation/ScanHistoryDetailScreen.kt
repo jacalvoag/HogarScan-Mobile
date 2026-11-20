@@ -1,20 +1,28 @@
 package com.example.hogarscan.scan.presentation
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.hogarscan.scan.domain.model.ScanRecord
 import com.example.hogarscan.scan.domain.model.ScanRecordStatus
+import com.example.hogarscan.ui.components.*
+import com.example.hogarscan.ui.theme.SpaceMono
 import java.text.DateFormat
 import java.util.Date
 
@@ -24,93 +32,63 @@ fun ScanHistoryDetailScreen(
     onBack: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
+    onEvaluate: (() -> Unit)? = null,
     evaluationContent: @Composable (ScanRecord) -> Unit = {}
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Text(
-            "Detalle de revisión",
-            style = MaterialTheme.typography.headlineMedium
-        )
-        OutlinedButton(onClick = onBack) {
-            Text("Volver al historial")
-        }
-
-        when (state) {
-            ScanDetailUiState.Closed -> Unit
-
-            ScanDetailUiState.Loading -> {
-                CircularProgressIndicator()
-                Text("Cargando revisión…")
-            }
-
-            ScanDetailUiState.NotFound -> {
-                Text("La revisión no está disponible para este perfil.")
-            }
-
-            ScanDetailUiState.Error -> {
-                Text(
-                    "No se pudo cargar la revisión.",
-                    color = MaterialTheme.colorScheme.error
-                )
-                OutlinedButton(onClick = onRetry) {
-                    Text("Reintentar")
+    val record = (state as? ScanDetailUiState.Loaded)?.record
+    var target by rememberSaveable(record?.ownerId, record?.id) { mutableStateOf<String?>(null) }
+    val probes = record?.results?.filter { it.address.toString() == target }.orEmpty()
+    val showTarget = probes.isNotEmpty()
+    val back = { if (showTarget) target = null else onBack() }
+    BackHandler(enabled = showTarget, onBack = back)
+    key(target) {
+        Column(modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            if (showTarget) {
+                HogarBackHeader("Detalle de dirección", back)
+                Text(requireNotNull(target), style = MaterialTheme.typography.headlineMedium, fontFamily = SpaceMono)
+                val identities = probes.filter { it.service?.product != null }
+                if (identities.isNotEmpty()) HogarCard {
+                    Text("Identidad anunciada", style = MaterialTheme.typography.titleLarge)
+                    identities.forEach { probe ->
+                        val evidence = requireNotNull(probe.service)
+                        Text("Puerto ${probe.port} · ${evidence.product} · ${evidence.version}")
+                    }
+                    Text("El anuncio no verifica el software instalado.", style = MaterialTheme.typography.bodySmall)
                 }
-            }
-
-            is ScanDetailUiState.Loaded -> {
-                val record = state.record
-                val scope = record.config.networkScope
-                Text("Inicio: ${detailDate(record.startedAtMillis)}")
-                record.finishedAtMillis?.let {
-                    Text("Cierre: ${detailDate(it)}")
-                }
-                Text("IPv4 del teléfono: ${scope.localAddress}")
-                Text("Subred: ${scope.networkAddress}/${scope.prefixLength}")
-
-                if (record.status == ScanRecordStatus.RUNNING) {
-                    Text("Resultados guardados hasta esta consulta.")
-                    OutlinedButton(onClick = onRetry) {
-                        Text("Actualizar detalle")
+                Text("Conexiones y protocolos", style = MaterialTheme.typography.titleLarge)
+                HogarCard {
+                    probes.forEach { probe ->
+                        Text("${probe.port} · ${probe.outcome.label()}", style = MaterialTheme.typography.titleMedium)
+                        Text(probe.service?.let { "${it.protocol} · respuesta compatible" } ?: "Protocolo no identificado")
+                        Text("${probe.durationMillis} ms", style = MaterialTheme.typography.bodySmall)
                     }
                 }
-
-                ScanResultsPanel(state = record.toDetailState())
-                val evidence = record.results.filter { it.service != null }
-                if (evidence.isNotEmpty()) {
-                    Text("Protocolos observados", style = MaterialTheme.typography.titleMedium)
-                    evidence.take(30).forEach { probe ->
-                        val service = requireNotNull(probe.service)
-                        Text("${probe.address}:${probe.port} · ${service.protocol}" +
-                            (service.product?.let { " · anuncia $it ${service.version}" } ?: " · producto/versión no identificados"))
+                HogarButton("Volver a los resultados", back, Modifier.fillMaxWidth(), secondary = true)
+                if (onEvaluate != null) HogarButton("Abrir evaluación de la revisión", onEvaluate, Modifier.fillMaxWidth())
+            } else {
+                HogarBackHeader("Resultados de revisión", back)
+                when (state) {
+                    ScanDetailUiState.Closed -> Unit
+                    ScanDetailUiState.Loading -> HogarLoading("Cargando revisión…")
+                    ScanDetailUiState.NotFound -> HogarNotice("Revisión no disponible", "No se encontró en este perfil.")
+                    ScanDetailUiState.Error -> {
+                        HogarNotice("No se pudo cargar la revisión", "Vuelve a intentarlo.", error = true)
+                        HogarButton("Reintentar", onRetry, Modifier.fillMaxWidth())
                     }
-                    if (evidence.size > 30) Text("${evidence.size} servicios identificados; el resto está disponible en la evaluación.")
+                    is ScanDetailUiState.Loaded -> {
+                        val data = state.record
+                        Text(DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+                            .format(Date(data.startedAtMillis)), style = MaterialTheme.typography.bodySmall)
+                        val status = ScanStatus.valueOf(data.status.name)
+                        ScanResultsPanel(ScanUiState(status, data.config, data.results),
+                            onTarget = { target = it.toString() }, details = { evaluationContent(data) })
+                        if (data.status == ScanRecordStatus.RUNNING) {
+                            HogarButton("Actualizar detalle", onRetry, Modifier.fillMaxWidth(), secondary = true)
+                        }
+                    }
                 }
-                evaluationContent(record)
             }
         }
     }
 }
-
-private fun ScanRecord.toDetailState() = ScanUiState(
-    status = when (status) {
-        ScanRecordStatus.RUNNING -> ScanStatus.RUNNING
-        ScanRecordStatus.COMPLETED -> ScanStatus.COMPLETED
-        ScanRecordStatus.CANCELLED -> ScanStatus.CANCELLED
-        ScanRecordStatus.INTERRUPTED -> ScanStatus.INTERRUPTED
-        ScanRecordStatus.FAILED -> ScanStatus.FAILED
-    },
-    config = config,
-    results = results
-)
-
-private fun detailDate(timestamp: Long): String =
-    DateFormat.getDateTimeInstance(
-        DateFormat.MEDIUM,
-        DateFormat.MEDIUM
-    ).format(Date(timestamp))

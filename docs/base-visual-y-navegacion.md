@@ -40,14 +40,13 @@ misma ruta que el historial. No se duplican ni se reasignan revisiones.
 confirmar, revocar y comenzar. El controlador conserva la validación y la
 autorización, incluida la nueva comprobación de red antes de confirmar.
 
-José conserva la propiedad de `auth/presentation/**`,
-`evaluations/presentation/**` y `DeleteSummariesPanel.kt`. La integración
-posterior conectará sus pantallas y callbacks desde `MainActivity` y los
-destinos de revisión, sin copiar su lógica en la base visual.
+La entrega reúne las catorce vistas del flujo revisado. Cuenta, ingreso y
+registro se abren desde la navegación de raíz y los accesos del modo invitado.
+Los resultados de una revisión guardada abren el detalle de una dirección
+o el flujo de evaluación. La evaluación conserva su ViewModel al navegar entre
+preparación, identificación, progreso y hallazgo.
 
-## Pendiente para las fases siguientes
-
-Las pantallas de progreso, resultados, detalle de dirección, historial y
-estadísticas conservan su implementación funcional anterior y aún requieren
-adaptación completa al diseño revisado. La conexión final de las pantallas de
-cuenta, autenticación y evaluación depende de la entrega de José.
+Los resúmenes de Estadísticas muestran los conteos disponibles en el servidor.
+En Inicio e Historial se muestran la fecha y el estado de cada revisión
+desde la lista ligera local. El alcance y los conteos por dirección se
+consultan al abrir los resultados.

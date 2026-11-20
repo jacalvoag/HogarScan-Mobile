@@ -4,8 +4,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -20,11 +18,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.hogarscan.app.HogarScanApplication
 import com.example.hogarscan.auth.presentation.AuthRoute
+import com.example.hogarscan.auth.presentation.AccountPage
+import com.example.hogarscan.auth.domain.model.SessionState
 import com.example.hogarscan.auth.presentation.AuthViewModel
 import com.example.hogarscan.scan.presentation.DeleteSummariesPanel
 import com.example.hogarscan.scan.presentation.DeleteSummariesViewModel
 import com.example.hogarscan.scan.presentation.ScanDetailUiState
 import com.example.hogarscan.scan.presentation.ScanHistoryRoute
+import com.example.hogarscan.scan.presentation.ScanHistoryUiState
 import com.example.hogarscan.scan.presentation.ScanHistoryViewModel
 import com.example.hogarscan.scan.presentation.WifiPage
 import com.example.hogarscan.scan.presentation.WifiRoute
@@ -46,12 +47,16 @@ class MainActivity : ComponentActivity() {
             val history: ScanHistoryViewModel = viewModel(factory = container.scanHistoryViewModelFactory)
             val historyState by history.uiState.collectAsStateWithLifecycle()
             val historyDetail by history.detailState.collectAsStateWithLifecycle()
+            val session by container.sessionReader.state.collectAsStateWithLifecycle()
             var destination by rememberSaveable { mutableStateOf(RootDestination.Home) }
             var wifiPage by rememberSaveable { mutableStateOf(WifiPage.Home) }
+            var accountPage by rememberSaveable { mutableStateOf(AccountPage.Account) }
+            var summaryOpen by rememberSaveable { mutableStateOf(false) }
             val showBottom = when (destination) {
                 RootDestination.Home -> wifiPage == WifiPage.Home
                 RootDestination.History -> historyDetail == ScanDetailUiState.Closed
-                else -> true
+                RootDestination.Account -> accountPage == AccountPage.Account
+                RootDestination.Statistics -> !summaryOpen
             }
             HogarScanTheme {
                 Scaffold(modifier = Modifier.fillMaxSize(),
@@ -66,17 +71,29 @@ class MainActivity : ComponentActivity() {
                             onOpenReview = { id ->
                                 history.openDetail(id)
                                 destination = RootDestination.History
-                            }, modifier = contentModifier)
+                            }, modifier = contentModifier,
+                            guest = session == SessionState.Guest,
+                            onLogin = { accountPage = AccountPage.Login; destination = RootDestination.Account },
+                            onRegister = { accountPage = AccountPage.Register; destination = RootDestination.Account },
+                            onHistory = { destination = RootDestination.History })
                         RootDestination.History -> ScanHistoryRoute(history, modifier = contentModifier,
                             evaluationFactory = container::scanEvaluationViewModelFactory)
-                        RootDestination.Account -> Column(contentModifier) {
-                            Box(Modifier.weight(1f)) { AuthRoute(viewModel = auth) }
+                        RootDestination.Account -> {
                             val delete: DeleteSummariesViewModel = viewModel(factory = container.deleteSummariesViewModelFactory)
-                            DeleteSummariesPanel(delete)
+                            AuthRoute(auth, contentModifier, accountPage, { accountPage = it },
+                                localCount = (historyState as? ScanHistoryUiState.Loaded)?.records?.size,
+                                onHistory = { destination = RootDestination.History },
+                                deleteContent = { DeleteSummariesPanel(delete) })
                         }
                         RootDestination.Statistics -> {
                             val statistics: StatisticsViewModel = viewModel(factory = container.statisticsViewModelFactory)
-                            StatisticsRoute(statistics, modifier = contentModifier)
+                            StatisticsRoute(statistics, modifier = contentModifier,
+                                onLogin = {
+                                    accountPage = AccountPage.Login
+                                    destination = RootDestination.Account
+                                },
+                                onHistory = { destination = RootDestination.History },
+                                onSummaryOpenChange = { summaryOpen = it })
                         }
                     }
                 }
