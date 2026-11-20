@@ -115,6 +115,7 @@ class WifiViewModel(
             try {
                 coordinator.execute(
                     request = request,
+                    onRecorded = { id -> _scanState.update { it.copy(reviewId = id) } },
                     onStarted = {
                         if (_scanState.value.status == ScanStatus.STARTING) {
                             _scanState.update {

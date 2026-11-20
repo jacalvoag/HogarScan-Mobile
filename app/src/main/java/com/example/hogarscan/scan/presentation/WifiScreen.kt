@@ -46,7 +46,11 @@ fun WifiRoute(
     onPageChange: (WifiPage) -> Unit,
     history: ScanHistoryUiState,
     onOpenReview: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    guest: Boolean = false,
+    onLogin: () -> Unit = {},
+    onRegister: () -> Unit = {},
+    onHistory: () -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val setupState by viewModel.setupState.collectAsStateWithLifecycle()
@@ -55,6 +59,8 @@ fun WifiRoute(
     var helpOrigin by rememberSaveable { mutableStateOf(WifiPage.Home) }
     val back = {
         when {
+            page == WifiPage.Setup && setupState.confirmation != null && !setupState.checkingNetwork -> viewModel.dismissConfirmation()
+            page == WifiPage.Setup && setupState.authorizedConfig != null -> viewModel.revokeAuthorization()
             page == WifiPage.Progress && scanState.isActive -> cancelConfirmation = true
             page == WifiPage.Help -> onPageChange(helpOrigin)
             else -> onPageChange(WifiPage.Home)
@@ -81,6 +87,7 @@ fun WifiRoute(
                     Text("HogarScan", style = MaterialTheme.typography.titleLarge)
                 }
                 Text("Inicio", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(top = 16.dp))
+                if (guest) HogarNotice("Modo invitado", "Puedes guardar revisiones TCP en este teléfono.", Modifier.fillMaxWidth())
                 Text("Tu red, con claridad.", style = MaterialTheme.typography.titleLarge)
                 NetworkSummary(state)
                 Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.primary, RoundedCornerShape(20.dp))
@@ -91,6 +98,10 @@ fun WifiRoute(
                         color = MaterialTheme.colorScheme.onPrimary)
                     HogarButton("Configurar revisión", { onPageChange(WifiPage.Setup) },
                         Modifier.fillMaxWidth(), secondary = true)
+                }
+                if (guest) {
+                    HogarButton("Iniciar sesión", onLogin, Modifier.fillMaxWidth())
+                    HogarButton("Crear cuenta", onRegister, Modifier.fillMaxWidth(), secondary = true)
                 }
                 Text("Última revisión", style = MaterialTheme.typography.titleLarge)
                 when (history) {
@@ -119,13 +130,16 @@ fun WifiRoute(
                 TextButton(onClick = viewModel::refresh, modifier = Modifier.fillMaxWidth()) { Text("Actualizar red") }
             }
             WifiPage.Setup -> {
-                HogarBackHeader("Nueva revisión", back)
-                Text("Red disponible", style = MaterialTheme.typography.titleLarge)
-                Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(20.dp))
-                    .padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    NetworkSummary(state, detailed = true)
-                    if (state !is WifiUiState.Loaded || (state as? WifiUiState.Loaded)?.result !is WifiNetworkResult.Available) {
-                        TextButton(onClick = viewModel::refresh) { Text("Actualizar red") }
+                val authorizing = setupState.confirmation != null || setupState.authorizedConfig != null
+                HogarBackHeader(if (authorizing) "Autorizar revisión" else "Nueva revisión", back)
+                if (!authorizing) {
+                    Text("Red Wi-Fi", style = MaterialTheme.typography.titleLarge)
+                    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(20.dp))
+                        .padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        NetworkSummary(state, detailed = true)
+                        if ((state as? WifiUiState.Loaded)?.result !is WifiNetworkResult.Available) {
+                            TextButton(onClick = viewModel::refresh) { Text("Actualizar red") }
+                        }
                     }
                 }
                 ScanSetupForm(setupState, viewModel::updateStartAddress, viewModel::updateEndAddress,
@@ -135,13 +149,23 @@ fun WifiRoute(
                         viewModel.startScan()
                         if (viewModel.scanState.value.isActive) onPageChange(WifiPage.Progress)
                     }, scanState.isActive)
-                TextButton(onClick = { helpOrigin = WifiPage.Setup; onPageChange(WifiPage.Help) },
+                if (!authorizing) TextButton(onClick = { helpOrigin = WifiPage.Setup; onPageChange(WifiPage.Help) },
                     modifier = Modifier.fillMaxWidth()) { Text("Consultar ayuda") }
             }
             WifiPage.Progress -> {
-                HogarBackHeader("Revisión TCP", back)
+                HogarBackHeader(if (scanState.isActive) "Revisión en curso" else "Resultados de revisión", back)
                 ScanResultsPanel(scanState, onCancel = { cancelConfirmation = true })
                 if (!scanState.isActive) {
+                    val reviewId = scanState.reviewId
+                    if (reviewId != null) {
+                        HogarButton("Abrir revisión guardada", {
+                            onPageChange(WifiPage.Home)
+                            onOpenReview(reviewId)
+                        }, Modifier.fillMaxWidth())
+                    } else {
+                        HogarButton("Ir al historial", { onPageChange(WifiPage.Home); onHistory() },
+                            Modifier.fillMaxWidth())
+                    }
                     HogarButton("Volver al inicio", { onPageChange(WifiPage.Home) }, Modifier.fillMaxWidth())
                 }
             }

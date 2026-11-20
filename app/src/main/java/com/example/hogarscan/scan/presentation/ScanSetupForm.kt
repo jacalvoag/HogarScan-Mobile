@@ -31,6 +31,7 @@ import com.example.hogarscan.scan.domain.policy.ScanPolicy
 import com.example.hogarscan.ui.components.HogarButton
 import com.example.hogarscan.ui.components.HogarField
 import com.example.hogarscan.ui.components.HogarNotice
+import com.example.hogarscan.ui.components.HogarCard
 
 @Composable
 fun ScanSetupForm(
@@ -48,6 +49,35 @@ fun ScanSetupForm(
 ) {
     val enabled = state.networkAvailable && !state.checkingNetwork && !scanInProgress
     var portsOpen by rememberSaveable { mutableStateOf(false) }
+    val authorization = state.authorizedConfig ?: state.confirmation
+    if (authorization != null) {
+        val confirmed = state.authorizedConfig != null
+        Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text(if (confirmed) "Alcance confirmado" else "Comprueba el alcance",
+                style = MaterialTheme.typography.headlineMedium)
+            HogarCard {
+                Text("Rango", style = MaterialTheme.typography.bodySmall)
+                Text("${authorization.startAddress} – ${authorization.endAddress}")
+                Text("Puertos TCP", style = MaterialTheme.typography.bodySmall)
+                Text(authorization.ports.sorted().joinToString(" · "))
+                Text("Trabajo previsto", style = MaterialTheme.typography.bodySmall)
+                Text("${authorization.targetAddresses.size} direcciones · ${authorization.plannedProbeCount} intentos")
+            }
+            HogarNotice(if (confirmed) "Autorización confirmada" else "Red administrada o autorizada",
+                if (confirmed) "Administro esta red o tengo permiso para revisarla."
+                else "Confirma que administras esta red o tienes permiso para revisarla.")
+            if (confirmed) {
+                HogarButton("Iniciar revisión", onStart, Modifier.fillMaxWidth(), enabled = enabled)
+            } else {
+                HogarButton("Confirmo que tengo autorización", onConfirm, Modifier.fillMaxWidth(),
+                    enabled = enabled, secondary = true)
+                if (state.checkingNetwork) Text("Comprobando la conexión…")
+            }
+            HogarButton("Modificar configuración", if (confirmed) onRevoke else onDismiss,
+                Modifier.fillMaxWidth(), enabled = !state.checkingNetwork, secondary = true)
+        }
+        return
+    }
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Alcance", style = MaterialTheme.typography.titleLarge)
         BoxWithConstraints {
@@ -89,14 +119,6 @@ fun ScanSetupForm(
             scanInProgress -> Text("La configuración está bloqueada durante la revisión.")
             state.checkingNetwork -> Text("Comprobando la conexión…")
             !state.networkAvailable -> Text("Conecta el teléfono a una red Wi-Fi para configurar.")
-            state.authorizedConfig != null -> {
-                val config = state.authorizedConfig
-                HogarNotice("Configuración autorizada",
-                    "${config.targetAddresses.size} direcciones objetivo · ${config.plannedProbeCount} intentos TCP",
-                    Modifier.fillMaxWidth())
-                HogarButton("Iniciar revisión", onStart, Modifier.fillMaxWidth())
-                HogarButton("Revocar autorización", onRevoke, Modifier.fillMaxWidth(), secondary = true)
-            }
             else -> HogarButton("Confirmar autorización", onReview, Modifier.fillMaxWidth())
         }
     }
@@ -121,23 +143,5 @@ fun ScanSetupForm(
                 }
             },
             confirmButton = { TextButton(onClick = { portsOpen = false }) { Text("Listo") } })
-    }
-    val config = state.confirmation
-    if (config != null && enabled) {
-        AlertDialog(onDismissRequest = onDismiss,
-            title = { Text("Autorizar configuración") },
-            text = {
-                Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Subred: ${config.networkScope.networkAddress}/${config.networkScope.prefixLength}")
-                    Text("Rango: ${config.startAddress} – ${config.endAddress}")
-                    Text("Puertos: ${config.ports.joinToString()}")
-                    Text("Direcciones objetivo: ${config.targetAddresses.size} (excluye el teléfono)")
-                    Text("Intentos TCP previstos: ${config.plannedProbeCount}")
-                    Text("Confirmo que tengo autorización para revisar esta red con el alcance indicado.")
-                }
-            },
-            confirmButton = { TextButton(onClick = onConfirm) { Text("Autorizar") } },
-            dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } })
     }
 }

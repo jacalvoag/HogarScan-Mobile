@@ -18,7 +18,8 @@ data class ScanUiState(
     val status: ScanStatus = ScanStatus.IDLE,
     val config: ScanConfig? = null,
     val results: List<ProbeResult> = emptyList(),
-    val message: String? = null
+    val message: String? = null,
+    val reviewId: String? = null
 ) {
     val isActive: Boolean
         get() = status == ScanStatus.STARTING ||
