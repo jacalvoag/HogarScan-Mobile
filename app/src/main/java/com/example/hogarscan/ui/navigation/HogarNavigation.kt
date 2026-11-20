@@ -6,6 +6,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.isSystemInDarkTheme
 import com.example.hogarscan.ui.components.HogarIcon
 import com.example.hogarscan.ui.components.HogarIconImage
 
@@ -23,7 +24,12 @@ fun HogarBottomNavigation(selected: RootDestination, onSelect: (RootDestination)
             NavigationBarItem(
                 selected = destination == selected,
                 onClick = { onSelect(destination) },
-                icon = { HogarIconImage(destination.icon) },
+                icon = {
+                    val asset = if (selected != RootDestination.Home && destination != RootDestination.Account) {
+                        "${selected.name.lowercase()}-${destination.icon.asset}"
+                    } else destination.icon.asset
+                    HogarIconImage(destination.icon, tint = isSystemInDarkTheme(), assetName = asset)
+                },
                 label = { Text(destination.label) },
                 colors = NavigationBarItemDefaults.colors(
                     indicatorColor = MaterialTheme.colorScheme.surfaceVariant,

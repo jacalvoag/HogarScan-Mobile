@@ -17,6 +17,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Surface
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -29,6 +31,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.caverock.androidsvg.SVGImageView
 import com.example.hogarscan.ui.theme.HogarScanTheme
@@ -40,22 +43,54 @@ enum class HogarIcon(val asset: String) {
 
 /** Iconos originales del Figma revisado; el contenedor conserva su geometría de 24 dp. */
 @Composable
-fun HogarIconImage(icon: HogarIcon, modifier: Modifier = Modifier, tint: Boolean = true) {
+fun HogarIconImage(icon: HogarIcon, modifier: Modifier = Modifier, tint: Boolean = true, size: Dp = 24.dp,
+                   assetName: String = icon.asset) {
     val color = MaterialTheme.colorScheme.onBackground.toArgb()
     AndroidView(
-        modifier = modifier.size(24.dp),
+        modifier = modifier.size(size),
         factory = { context ->
             SVGImageView(context).apply {
-                setImageAsset("figma/revised/${icon.asset}.svg")
                 scaleType = ImageView.ScaleType.FIT_CENTER
                 importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }
         },
         update = {
+            if (it.tag != assetName) {
+                it.setImageAsset("figma/revised/$assetName.svg")
+                it.tag = assetName
+            }
             if (tint && icon != HogarIcon.Logo) it.setColorFilter(color, PorterDuff.Mode.SRC_IN)
             else it.clearColorFilter()
         }
     )
+}
+
+@Composable
+fun HogarBrandHeader() {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        HogarIconImage(HogarIcon.Logo, tint = false, size = 32.dp)
+        Text("HogarScan", style = MaterialTheme.typography.titleLarge)
+    }
+}
+
+@Composable
+fun HogarCard(content: @Composable () -> Unit) {
+    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { content() }
+    }
+}
+
+@Composable
+fun HogarProgress(completed: Int, total: Int, label: String) {
+    val fraction = if (total > 0) (completed.toFloat() / total).coerceIn(0f, 1f) else 0f
+    HogarCard {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("${(fraction * 100).toInt()}%", style = MaterialTheme.typography.headlineLarge,
+                color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+            Text(label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+        }
+        LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
+    }
 }
 
 @Composable
