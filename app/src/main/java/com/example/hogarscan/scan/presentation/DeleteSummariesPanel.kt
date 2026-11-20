@@ -1,9 +1,11 @@
 package com.example.hogarscan.scan.presentation
 
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.Modifier
+import com.example.hogarscan.ui.components.HogarButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -12,9 +14,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 fun DeleteSummariesPanel(viewModel: DeleteSummariesViewModel) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     if (state.session == null) return
-    OutlinedButton(enabled = !state.pending, onClick = viewModel::requestConfirmation) {
-        Text("Borrar resúmenes del servidor")
-    }
+    HogarButton("Borrar resúmenes del servidor", viewModel::requestConfirmation, Modifier.fillMaxWidth(),
+        enabled = !state.pending, destructive = true)
     state.message?.let { Text(it) }
     if (state.confirmation != null) {
         AlertDialog(
