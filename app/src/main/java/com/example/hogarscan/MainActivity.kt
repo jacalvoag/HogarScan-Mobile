@@ -4,125 +4,96 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
-import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.hogarscan.app.HogarScanApplication
+import com.example.hogarscan.auth.presentation.AuthRoute
+import com.example.hogarscan.auth.presentation.AccountPage
+import com.example.hogarscan.auth.domain.model.SessionState
+import com.example.hogarscan.auth.presentation.AuthViewModel
+import com.example.hogarscan.scan.presentation.DeleteSummariesPanel
+import com.example.hogarscan.scan.presentation.DeleteSummariesViewModel
+import com.example.hogarscan.scan.presentation.ScanDetailUiState
 import com.example.hogarscan.scan.presentation.ScanHistoryRoute
+import com.example.hogarscan.scan.presentation.ScanHistoryUiState
 import com.example.hogarscan.scan.presentation.ScanHistoryViewModel
+import com.example.hogarscan.scan.presentation.WifiPage
 import com.example.hogarscan.scan.presentation.WifiRoute
 import com.example.hogarscan.scan.presentation.WifiViewModel
-import com.example.hogarscan.ui.theme.HogarScanTheme
-import androidx.compose.foundation.layout.consumeWindowInsets
-import androidx.compose.ui.res.stringResource
-import com.example.hogarscan.auth.presentation.AuthRoute
-import com.example.hogarscan.auth.presentation.AuthViewModel
-import com.example.hogarscan.scan.presentation.DeleteSummariesViewModel
-import com.example.hogarscan.scan.presentation.DeleteSummariesPanel
 import com.example.hogarscan.statistics.presentation.StatisticsRoute
 import com.example.hogarscan.statistics.presentation.StatisticsViewModel
+import com.example.hogarscan.ui.navigation.HogarBottomNavigation
+import com.example.hogarscan.ui.navigation.RootDestination
+import com.example.hogarscan.ui.theme.HogarScanTheme
 
 class MainActivity : ComponentActivity() {
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-
-        val container =
-            (application as HogarScanApplication).container
-
+        val container = (application as HogarScanApplication).container
         setContent {
-            val wifiViewModel: WifiViewModel = viewModel(
-                factory = container.wifiViewModelFactory
-            )
-
-            val authViewModel: AuthViewModel = viewModel(
-                factory = container.authViewModelFactory
-            )
-
-            var selectedTab by rememberSaveable { mutableStateOf(0) }
-
+            val wifi: WifiViewModel = viewModel(factory = container.wifiViewModelFactory)
+            val auth: AuthViewModel = viewModel(factory = container.authViewModelFactory)
+            val history: ScanHistoryViewModel = viewModel(factory = container.scanHistoryViewModelFactory)
+            val historyState by history.uiState.collectAsStateWithLifecycle()
+            val historyDetail by history.detailState.collectAsStateWithLifecycle()
+            val session by container.sessionReader.state.collectAsStateWithLifecycle()
+            var destination by rememberSaveable { mutableStateOf(RootDestination.Home) }
+            var wifiPage by rememberSaveable { mutableStateOf(WifiPage.Home) }
+            var accountPage by rememberSaveable { mutableStateOf(AccountPage.Account) }
+            var summaryOpen by rememberSaveable { mutableStateOf(false) }
+            val showBottom = when (destination) {
+                RootDestination.Home -> wifiPage == WifiPage.Home
+                RootDestination.History -> historyDetail == ScanDetailUiState.Closed
+                RootDestination.Account -> accountPage == AccountPage.Account
+                RootDestination.Statistics -> !summaryOpen
+            }
             HogarScanTheme {
-                Scaffold(
-                    modifier = Modifier.fillMaxSize(),
-                    topBar = {
-                        TabRow(
-                            selectedTabIndex = selectedTab,
-                            modifier = Modifier.statusBarsPadding()
-                        ) {
-                            Tab(
-                                selected = selectedTab == 0,
-                                onClick = { selectedTab = 0 },
-                                text = { Text("Red Wi-Fi") }
-                            )
-                            Tab(
-                                selected = selectedTab == 1,
-                                onClick = { selectedTab = 1 },
-                                text = { Text("Historial") }
-                            )
-                            Tab(
-                                selected = selectedTab == 2,
-                                onClick = { selectedTab = 2 },
-                                text = { Text(stringResource(R.string.auth_account)) }
-                            )
-                            Tab(
-                                selected = selectedTab == 3,
-                                onClick = { selectedTab = 3 },
-                                text = { Text("Estadísticas") }
-                            )
-                        }
+                Scaffold(modifier = Modifier.fillMaxSize(),
+                    bottomBar = {
+                        if (showBottom) HogarBottomNavigation(destination) { destination = it }
                     }
                 ) { innerPadding ->
-                    when (selectedTab) {
-                        0 -> {
-                            WifiRoute(
-                                viewModel = wifiViewModel,
-                                modifier = Modifier.padding(innerPadding)
-                            )
+                    val contentModifier = Modifier.padding(innerPadding)
+                        .consumeWindowInsets(innerPadding).statusBarsPadding()
+                    when (destination) {
+                        RootDestination.Home -> WifiRoute(wifi, wifiPage, { wifiPage = it }, historyState,
+                            onOpenReview = { id ->
+                                history.openDetail(id)
+                                destination = RootDestination.History
+                            }, modifier = contentModifier,
+                            guest = session == SessionState.Guest,
+                            onLogin = { accountPage = AccountPage.Login; destination = RootDestination.Account },
+                            onRegister = { accountPage = AccountPage.Register; destination = RootDestination.Account },
+                            onHistory = { destination = RootDestination.History })
+                        RootDestination.History -> ScanHistoryRoute(history, modifier = contentModifier,
+                            evaluationFactory = container::scanEvaluationViewModelFactory)
+                        RootDestination.Account -> {
+                            val delete: DeleteSummariesViewModel = viewModel(factory = container.deleteSummariesViewModelFactory)
+                            AuthRoute(auth, contentModifier, accountPage, { accountPage = it },
+                                localCount = (historyState as? ScanHistoryUiState.Loaded)?.records?.size,
+                                onHistory = { destination = RootDestination.History },
+                                deleteContent = { DeleteSummariesPanel(delete) })
                         }
-
-                        1 -> {
-                            val historyViewModel: ScanHistoryViewModel = viewModel(
-                                factory = container.scanHistoryViewModelFactory
-                            )
-
-                            ScanHistoryRoute(
-                                viewModel = historyViewModel,
-                                modifier = Modifier.padding(innerPadding),
-                                evaluationFactory = container::scanEvaluationViewModelFactory
-                            )
-                        }
-
-                        2 -> {
-                            Column(Modifier.padding(innerPadding).consumeWindowInsets(innerPadding)) {
-                                Box(Modifier.weight(1f)) { AuthRoute(viewModel = authViewModel) }
-                                val deleteViewModel: DeleteSummariesViewModel = viewModel(
-                                    factory = container.deleteSummariesViewModelFactory
-                                )
-                                DeleteSummariesPanel(deleteViewModel)
-                            }
-                        }
-
-                        3 -> {
-                            val statisticsViewModel: StatisticsViewModel = viewModel(
-                                factory = container.statisticsViewModelFactory
-                            )
-                            StatisticsRoute(
-                                viewModel = statisticsViewModel,
-                                modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding)
-                            )
+                        RootDestination.Statistics -> {
+                            val statistics: StatisticsViewModel = viewModel(factory = container.statisticsViewModelFactory)
+                            StatisticsRoute(statistics, modifier = contentModifier,
+                                onLogin = {
+                                    accountPage = AccountPage.Login
+                                    destination = RootDestination.Account
+                                },
+                                onHistory = { destination = RootDestination.History },
+                                onSummaryOpenChange = { summaryOpen = it })
                         }
                     }
                 }

@@ -4,6 +4,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -85,20 +86,26 @@ class ScanFindingRotationTest {
         } }
         compose.runOnIdle { history.openDetail(record.id) }
         compose.waitUntil { history.detailState.value is ScanDetailUiState.Loaded }
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithText("Abrir evaluación").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("Abrir evaluación").performScrollTo().performClick()
         compose.onNodeWithTag("scan-evaluation-results").performScrollTo()
         compose.onNodeWithText(title).performScrollTo().performClick()
-        compose.onNodeWithText("DETALLE DE HALLAZGO").assertExists()
+        compose.onNodeWithText("Detalle de hallazgo").assertExists()
 
         // Simula la recreación de Compose manteniendo los ViewModels, como en una rotación.
         restoration.emulateSavedInstanceStateRestore()
-        compose.onNodeWithText("DETALLE DE HALLAZGO").assertExists()
+        compose.onNodeWithText("Detalle de hallazgo").assertExists()
         compose.onNodeWithText(title).assertExists()
-        compose.onNodeWithText("Detalle de revisión").assertDoesNotExist()
+        compose.onNodeWithText("Resultados de revisión").assertDoesNotExist()
 
         Espresso.pressBack()
-        compose.onNodeWithText("Detalle de revisión").assertExists()
+        compose.onNodeWithText("Evaluación de la revisión").assertExists()
         restoration.emulateSavedInstanceStateRestore()
-        compose.onNodeWithText("DETALLE DE HALLAZGO").assertDoesNotExist()
-        compose.onNodeWithText("Detalle de revisión").assertExists()
+        compose.onNodeWithText("Detalle de hallazgo").assertDoesNotExist()
+        compose.onNodeWithText("Evaluación de la revisión").assertExists()
+        Espresso.pressBack()
+        compose.onNodeWithText("Resultados de revisión").assertExists()
     }
 }

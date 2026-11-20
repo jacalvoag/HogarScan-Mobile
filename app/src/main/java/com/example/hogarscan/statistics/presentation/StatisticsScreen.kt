@@ -7,10 +7,17 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Row
+import com.example.hogarscan.ui.components.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -20,7 +27,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @Composable
-fun StatisticsRoute(viewModel: StatisticsViewModel, modifier: Modifier = Modifier) {
+fun StatisticsRoute(
+    viewModel: StatisticsViewModel, modifier: Modifier = Modifier,
+    onLogin: (() -> Unit)? = null, onHistory: (() -> Unit)? = null,
+    onSummaryOpenChange: (Boolean) -> Unit = {}
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     // Al volver desde historial o cuenta se solicita una instantánea nueva.
     LaunchedEffect(viewModel) { viewModel.refresh() }
@@ -29,50 +40,96 @@ fun StatisticsRoute(viewModel: StatisticsViewModel, modifier: Modifier = Modifie
             viewModel.refresh()
         }
     }
-    StatisticsScreen(state, onRefresh = viewModel::refresh, modifier = modifier)
+    StatisticsScreen(state, onRefresh = viewModel::refresh, modifier = modifier, onLogin = onLogin,
+        onHistory = onHistory, onSummaryOpenChange = onSummaryOpenChange)
 }
 
 @Composable
-fun StatisticsScreen(state: StatisticsUiState, onRefresh: () -> Unit, modifier: Modifier = Modifier) {
-    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Estadísticas de la cuenta", style = MaterialTheme.typography.headlineMedium)
-        Text("Solo incluyen revisiones completas y evaluadas cuyos resúmenes llegaron a la API.")
-        when (state) {
-            StatisticsUiState.Idle -> Text("Actualiza para consultar tus estadísticas.")
-            StatisticsUiState.Loading -> { CircularProgressIndicator(); Text("Consultando estadísticas…") }
-            StatisticsUiState.SignInRequired -> Text("Inicia sesión para consultar las estadísticas de tu cuenta.")
-            is StatisticsUiState.Error -> Text(state.message, color = MaterialTheme.colorScheme.error)
-            is StatisticsUiState.Data -> {
-                val data = state.statistics
-                if (data.totalScans == 0L) Text("Aún no hay resúmenes sincronizados.")
-                Text("Revisiones: ${data.totalScans}")
-                Text("Direcciones revisadas: ${data.totalAddressesScanned}")
-                Text("Direcciones con respuesta: ${data.totalAddressesResponded}")
-                Text("Servicios con conexión aceptada: ${data.totalAcceptedServices}")
-                Text("Una misma dirección puede contarse en varias revisiones; no equivale a dispositivos únicos.")
-                Text("Hallazgos por categoría", style = MaterialTheme.typography.titleMedium)
-                Text("Conexión TCP aceptada: ${data.findings.tcpServiceAccessible}")
-                Text("Protocolo identificado: ${data.findings.protocolIdentified}")
-                Text("Revisión preventiva: ${data.findings.preventiveReview}")
-                Text("Posible coincidencia CVE: ${data.findings.possibleCveMatch}")
-                Text("Evidencia insuficiente: ${data.findings.insufficientEvidence}")
-                Text("Una coincidencia posible no confirma una vulnerabilidad.")
-                Text("Generadas: ${data.generatedAt}")
-                if (data.recentScans.isNotEmpty()) Text("Revisiones recientes", style = MaterialTheme.typography.titleMedium)
-                data.recentScans.forEach { scan ->
-                    OutlinedCard(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("Inicio: ${scan.startedAt}")
-                            Text("Servicios con conexión aceptada: ${scan.acceptedServices}")
-                            Text("Coincidencias CVE posibles: ${scan.findings.possibleCveMatch}")
+fun StatisticsScreen(
+    state: StatisticsUiState,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier,
+    onLogin: (() -> Unit)? = null,
+    onHistory: (() -> Unit)? = null,
+    onSummaryOpenChange: (Boolean) -> Unit = {}
+) {
+    var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
+    val data = (state as? StatisticsUiState.Data)?.statistics
+    val selected = data?.recentScans?.firstOrNull { it.scanId == selectedId }
+    LaunchedEffect(state) { if (selected == null) selectedId = null }
+    LaunchedEffect(selected != null) { onSummaryOpenChange(selected != null) }
+    BackHandler(enabled = selected != null) { selectedId = null }
+    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        if (selected != null) {
+            HogarBackHeader("Resumen de la cuenta", { selectedId = null })
+            Text(localDate(selected.startedAt), style = MaterialTheme.typography.headlineMedium)
+            HogarCard {
+                HogarValueRow("Conexiones aceptadas", selected.acceptedServices.toString())
+                HogarValueRow("Coincidencias CVE posibles", selected.findings.possibleCveMatch.toString())
+            }
+            HogarNotice("Detalle local no disponible",
+                "El servidor conserva fechas y conteos agregados. Las direcciones y evaluaciones permanecen en el teléfono donde se realizó la revisión.")
+            HogarButton("Volver a estadísticas", { selectedId = null }, Modifier.fillMaxWidth(), secondary = true)
+        } else {
+            HogarBrandHeader()
+            Text("Estadísticas", style = MaterialTheme.typography.headlineMedium)
+            Text("Solo incluyen revisiones completas y evaluadas cuyos resúmenes llegaron a la API.")
+            when (state) {
+                StatisticsUiState.Idle -> Text("Actualiza para consultar tus estadísticas.")
+                StatisticsUiState.Loading -> HogarLoading("Consultando estadísticas…")
+                StatisticsUiState.SignInRequired -> {
+                    Text("Inicia sesión para consultar las estadísticas de tu cuenta.")
+                    onLogin?.let { HogarButton("Ir a cuenta", it, Modifier.fillMaxWidth()) }
+                }
+                is StatisticsUiState.Error -> HogarNotice("No se pudieron consultar las estadísticas", state.message, error = true)
+                is StatisticsUiState.Data -> {
+                    val stats = state.statistics
+                    if (stats.totalScans == 0L) Text("Aún no hay resúmenes sincronizados.")
+                    Text("Actualizadas: ${localDate(stats.generatedAt)}", style = MaterialTheme.typography.bodySmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        HogarMetric(stats.totalScans.toString(), "Revisiones: ${stats.totalScans}", Modifier.weight(1f))
+                        HogarMetric(stats.totalAddressesScanned.toString(), "Direcciones revisadas", Modifier.weight(1f))
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        HogarMetric(stats.totalAddressesResponded.toString(), "Con respuesta TCP", Modifier.weight(1f))
+                        HogarMetric(stats.totalAcceptedServices.toString(), "Conexiones aceptadas", Modifier.weight(1f))
+                    }
+                    if (stats.totalScans == 0L) {
+                        onHistory?.let { HogarButton("Ir a mis revisiones", it, Modifier.fillMaxWidth(), secondary = true) }
+                    } else {
+                        Findings(stats.findings)
+                        Text("Una dirección puede contarse en varias revisiones.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (stats.recentScans.isNotEmpty()) Text("Revisiones recientes", style = MaterialTheme.typography.titleLarge)
+                    stats.recentScans.forEach { scan ->
+                        HogarCard {
+                            Text(localDate(scan.startedAt), style = MaterialTheme.typography.titleMedium)
+                            HogarButton("Abrir resumen", { selectedId = scan.scanId }, Modifier.fillMaxWidth(), secondary = true)
                         }
                     }
                 }
             }
-        }
-        if (state !is StatisticsUiState.Loading && state !is StatisticsUiState.SignInRequired) {
-            Button(onClick = onRefresh) { Text("Actualizar") }
+            if (state != StatisticsUiState.Loading && state != StatisticsUiState.SignInRequired) {
+                HogarButton("Actualizar", onRefresh, Modifier.fillMaxWidth())
+            }
         }
     }
 }
+
+@Composable
+private fun Findings(counts: com.example.hogarscan.statistics.domain.StatisticsFindingCounts) {
+    Text("Hallazgos por categoría", style = MaterialTheme.typography.titleLarge)
+    HogarCard {
+        HogarValueRow("Conexión TCP aceptada", counts.tcpServiceAccessible.toString())
+        HogarValueRow("Protocolo identificado", counts.protocolIdentified.toString())
+        HogarValueRow("Revisión preventiva", counts.preventiveReview.toString())
+        HogarValueRow("Posible coincidencia CVE", counts.possibleCveMatch.toString())
+        HogarValueRow("Evidencia insuficiente", counts.insufficientEvidence.toString())
+    }
+}
+
+private fun localDate(value: String): String = runCatching {
+    DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
+        .withZone(ZoneId.systemDefault()).format(Instant.parse(value))
+}.getOrDefault(value)
