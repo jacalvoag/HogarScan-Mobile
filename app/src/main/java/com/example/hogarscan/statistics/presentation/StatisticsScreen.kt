@@ -40,8 +40,15 @@ fun StatisticsRoute(
             viewModel.refresh()
         }
     }
-    StatisticsScreen(state, onRefresh = viewModel::refresh, modifier = modifier, onLogin = onLogin,
-        onHistory = onHistory, onSummaryOpenChange = onSummaryOpenChange)
+    StatisticsScreen(
+        state = state,
+        onRefresh = viewModel::refresh,
+        modifier = modifier,
+        onLogin = onLogin,
+        onHistory = onHistory,
+        onSummaryOpenChange = onSummaryOpenChange,
+        selectionKey = viewModel.selectionKey
+    )
 }
 
 @Composable
@@ -51,26 +58,102 @@ fun StatisticsScreen(
     modifier: Modifier = Modifier,
     onLogin: (() -> Unit)? = null,
     onHistory: (() -> Unit)? = null,
-    onSummaryOpenChange: (Boolean) -> Unit = {}
+    onSummaryOpenChange: (Boolean) -> Unit = {},
+    selectionKey: String? = null
 ) {
-    var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedId by rememberSaveable(selectionKey) {
+        mutableStateOf<String?>(null)
+    }
+
     val data = (state as? StatisticsUiState.Data)?.statistics
-    val selected = data?.recentScans?.firstOrNull { it.scanId == selectedId }
-    LaunchedEffect(state) { if (selected == null) selectedId = null }
-    LaunchedEffect(selected != null) { onSummaryOpenChange(selected != null) }
-    BackHandler(enabled = selected != null) { selectedId = null }
+    val selected = data?.recentScans?.firstOrNull {
+        it.scanId == selectedId
+    }
+
+    LaunchedEffect(state) {
+        when (state) {
+            is StatisticsUiState.Data -> {
+                if (selected == null) {
+                    selectedId = null
+                }
+            }
+
+            StatisticsUiState.Idle,
+            StatisticsUiState.SignInRequired -> {
+                selectedId = null
+            }
+
+            StatisticsUiState.Loading,
+            is StatisticsUiState.Error -> Unit
+        }
+    }
+
+    LaunchedEffect(selectedId != null) {
+        onSummaryOpenChange(selectedId != null)
+    }
+
+    BackHandler(enabled = selectedId != null) {
+        selectedId = null
+    }
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        if (selected != null) {
-            HogarBackHeader("Resumen de la cuenta", { selectedId = null })
-            Text(localDate(selected.startedAt), style = MaterialTheme.typography.headlineMedium)
-            HogarCard {
-                HogarValueRow("Conexiones aceptadas", selected.acceptedServices.toString())
-                HogarValueRow("Coincidencias CVE posibles", selected.findings.possibleCveMatch.toString())
+        if (selectedId != null) {
+            HogarBackHeader(
+                title = "Resumen de la cuenta",
+                onBack = { selectedId = null }
+            )
+
+            when {
+                selected != null -> {
+                    Text(
+                        text = localDate(selected.startedAt),
+                        style = MaterialTheme.typography.headlineMedium
+                    )
+
+                    HogarCard {
+                        HogarValueRow(
+                            "Conexiones aceptadas",
+                            selected.acceptedServices.toString()
+                        )
+                        HogarValueRow(
+                            "Coincidencias CVE posibles",
+                            selected.findings.possibleCveMatch.toString()
+                        )
+                    }
+
+                    HogarNotice(
+                        "Detalle local no disponible",
+                        "El servidor conserva fechas y conteos agregados. " +
+                                "Las direcciones y evaluaciones permanecen en " +
+                                "el teléfono donde se realizó la revisión."
+                    )
+                }
+
+                state is StatisticsUiState.Error -> {
+                    HogarNotice(
+                        title = "No se pudo actualizar el resumen",
+                        body = state.message,
+                        error = true
+                    )
+
+                    HogarButton(
+                        "Reintentar",
+                        onRefresh,
+                        Modifier.fillMaxWidth()
+                    )
+                }
+
+                else -> {
+                    HogarLoading("Actualizando resumen…")
+                }
             }
-            HogarNotice("Detalle local no disponible",
-                "El servidor conserva fechas y conteos agregados. Las direcciones y evaluaciones permanecen en el teléfono donde se realizó la revisión.")
-            HogarButton("Volver a estadísticas", { selectedId = null }, Modifier.fillMaxWidth(), secondary = true)
+
+            HogarButton(
+                text = "Volver a estadísticas",
+                onClick = { selectedId = null },
+                modifier = Modifier.fillMaxWidth(),
+                secondary = true
+            )
         } else {
             HogarBrandHeader()
             Text("Estadísticas", style = MaterialTheme.typography.headlineMedium)
