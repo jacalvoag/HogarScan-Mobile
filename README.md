@@ -217,6 +217,24 @@ También puedes ejecutar la aplicación desde Android Studio.
 
 ## Verificación
 
+### Integración continua
+
+El workflow `Android CI` se ejecuta en Pull Requests hacia `develop`
+y `main`, y en los cambios integrados en esas ramas.
+
+Comprueba:
+
+- Pruebas unitarias.
+- Android Lint.
+- Compilación de la aplicación.
+- Compilación de la APK de pruebas instrumentadas.
+
+Los informes generados se conservan como artefactos durante siete días.
+
+La CI utiliza una URL de ejemplo y no necesita credenciales de la API.
+No ejecuta las pruebas instrumentadas ni sustituye las comprobaciones
+manuales en una red autorizada.
+
 ### Pruebas unitarias
 
 ```bash
