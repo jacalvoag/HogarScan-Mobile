@@ -303,6 +303,14 @@ Los documentos de arquitectura inicial y desarrollo conservan decisiones
 y etapas del proceso. Sus apartados históricos de trabajo pendiente deben
 interpretarse considerando la implementación actual.
 
+## Contribución y seguridad
+
+Consulta la [guía de contribución](CONTRIBUTING.md) para conocer el flujo
+de trabajo y las verificaciones del proyecto.
+
+Para comunicar posibles vulnerabilidades, sigue la
+[política de seguridad](SECURITY.md).
+
 ## Autores
 
 - José Antonio Calvo Aguilar — [jacalvoag](https://github.com/jacalvoag).
