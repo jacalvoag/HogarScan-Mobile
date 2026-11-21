@@ -6,11 +6,13 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.foundation.isSystemInDarkTheme
 import com.example.hogarscan.ui.components.HogarIcon
 import com.example.hogarscan.ui.components.HogarIconImage
 
-enum class RootDestination(val label: String, val icon: HogarIcon) {
+enum class RootDestination(
+    val label: String,
+    val icon: HogarIcon
+) {
     Home("Inicio", HogarIcon.Home),
     History("Historial", HogarIcon.History),
     Statistics("Estadísticas", HogarIcon.Statistics),
@@ -18,23 +20,43 @@ enum class RootDestination(val label: String, val icon: HogarIcon) {
 }
 
 @Composable
-fun HogarBottomNavigation(selected: RootDestination, onSelect: (RootDestination) -> Unit) {
-    NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+fun HogarBottomNavigation(
+    selected: RootDestination,
+    onSelect: (RootDestination) -> Unit
+) {
+    val colors = MaterialTheme.colorScheme
+    val activeColor = colors.primary
+    val inactiveColor = colors.onSurfaceVariant
+
+    NavigationBar(
+        containerColor = colors.surface
+    ) {
         RootDestination.entries.forEach { destination ->
+            val isSelected = destination == selected
+
             NavigationBarItem(
-                selected = destination == selected,
+                selected = isSelected,
                 onClick = { onSelect(destination) },
                 icon = {
-                    val asset = if (selected != RootDestination.Home && destination != RootDestination.Account) {
-                        "${selected.name.lowercase()}-${destination.icon.asset}"
-                    } else destination.icon.asset
-                    HogarIconImage(destination.icon, tint = isSystemInDarkTheme(), assetName = asset)
+                    HogarIconImage(
+                        icon = destination.icon,
+                        tint = true,
+                        tintColor = if (isSelected) {
+                            activeColor
+                        } else {
+                            inactiveColor
+                        }
+                    )
                 },
-                label = { Text(destination.label) },
+                label = {
+                    Text(destination.label)
+                },
                 colors = NavigationBarItemDefaults.colors(
-                    indicatorColor = MaterialTheme.colorScheme.surfaceVariant,
-                    selectedTextColor = MaterialTheme.colorScheme.onSurface,
-                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    selectedIconColor = activeColor,
+                    unselectedIconColor = inactiveColor,
+                    selectedTextColor = activeColor,
+                    unselectedTextColor = inactiveColor,
+                    indicatorColor = colors.surfaceVariant
                 )
             )
         }

@@ -40,6 +40,12 @@ class StatisticsViewModel(
     private var expiryJob: Job? = null
     private var requestId = 0L
     private var identity = sessionKey(sessions.state.value)
+    val selectionKey: String?
+        get() = (sessions.state.value as? SessionState.Authenticated)
+            ?.session
+            ?.let {
+                "${it.contextId}:${it.userId}:${it.summaryGeneration}"
+            }
 
     init {
         viewModelScope.launch {

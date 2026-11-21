@@ -1,7 +1,5 @@
 package com.example.hogarscan.ui.components
 
-import android.graphics.PorterDuff
-import android.widget.ImageView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -25,17 +23,24 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.viewinterop.AndroidView
-import com.caverock.androidsvg.SVGImageView
 import com.example.hogarscan.ui.theme.HogarScanTheme
 import com.example.hogarscan.ui.theme.HogarColors
+import androidx.compose.ui.graphics.Color
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import com.caverock.androidsvg.SVG
 
 enum class HogarIcon(val asset: String) {
     Home("home"), History("history"), Statistics("stats"), Account("account"), Logo("logo"), Back("back")
@@ -43,24 +48,46 @@ enum class HogarIcon(val asset: String) {
 
 /** Iconos originales del Figma revisado; el contenedor conserva su geometría de 24 dp. */
 @Composable
-fun HogarIconImage(icon: HogarIcon, modifier: Modifier = Modifier, tint: Boolean = true, size: Dp = 24.dp,
-                   assetName: String = icon.asset) {
-    val color = MaterialTheme.colorScheme.onBackground.toArgb()
-    AndroidView(
+fun HogarIconImage(
+    icon: HogarIcon,
+    modifier: Modifier = Modifier,
+    tint: Boolean = true,
+    size: Dp = 24.dp,
+    assetName: String = icon.asset,
+    tintColor: Color = MaterialTheme.colorScheme.onBackground
+) {
+    val assets = LocalContext.current.assets
+    val sizePx = with(LocalDensity.current) {
+        size.roundToPx().coerceAtLeast(1)
+    }
+
+    val image = remember(assets, assetName, sizePx) {
+        val svg = SVG.getFromAsset(
+            assets,
+            "figma/revised/$assetName.svg"
+        )
+
+        svg.setDocumentWidth(sizePx.toFloat())
+        svg.setDocumentHeight(sizePx.toFloat())
+
+        val bitmap = Bitmap.createBitmap(
+            sizePx,
+            sizePx,
+            Bitmap.Config.ARGB_8888
+        )
+
+        svg.renderToCanvas(Canvas(bitmap))
+        bitmap.asImageBitmap()
+    }
+
+    Image(
+        bitmap = image,
+        contentDescription = null,
         modifier = modifier.size(size),
-        factory = { context ->
-            SVGImageView(context).apply {
-                scaleType = ImageView.ScaleType.FIT_CENTER
-                importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            }
-        },
-        update = {
-            if (it.tag != assetName) {
-                it.setImageAsset("figma/revised/$assetName.svg")
-                it.tag = assetName
-            }
-            if (tint && icon != HogarIcon.Logo) it.setColorFilter(color, PorterDuff.Mode.SRC_IN)
-            else it.clearColorFilter()
+        colorFilter = if (tint && icon != HogarIcon.Logo) {
+            ColorFilter.tint(tintColor)
+        } else {
+            null
         }
     )
 }
