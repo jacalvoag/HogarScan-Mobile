@@ -71,7 +71,7 @@ class FindingDetailScreenTest {
         val result = EvaluationResult("1", "2026-11-11T00:00:00Z",
             EvaluationSources(SourceState.NOT_QUERIED, SourceState.NOT_QUERIED, null), listOf(finding), emptyList())
         compose.setContent { MaterialTheme { EvaluationResultPanel(result, onFindingClick = { selected = it }) } }
-        compose.onNodeWithText("Ver detalle").performClick()
+        compose.onNodeWithText("Ver hallazgo").performClick()
         compose.runOnIdle { assertTrue(selected == 0) }
     }
 }

@@ -32,6 +32,12 @@ import com.example.hogarscan.evaluations.domain.model.FindingConfidence
 import com.example.hogarscan.evaluations.domain.model.FindingPriority
 import com.example.hogarscan.evaluations.domain.model.IdentificationSource
 import com.example.hogarscan.evaluations.domain.model.SourceState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import com.example.hogarscan.ui.components.HogarField
 
 @Composable
 fun EvaluationRoute(viewModel: EvaluationViewModel, modifier: Modifier = Modifier) {
@@ -74,9 +80,53 @@ fun EvaluationScreen(
             }
             if (form.enabled) {
                 Text("Los datos son declarados por ti y no se verifican automáticamente.")
-                OutlinedTextField(value = form.vendor, onValueChange = { onFormChange(form.copy(vendor = it)) }, label = { Text("Fabricante (máximo 80)") }, isError = errors.vendor, enabled = editable, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = form.product, onValueChange = { onFormChange(form.copy(product = it)) }, label = { Text("Producto (máximo 120)") }, isError = errors.product, enabled = editable, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = form.version, onValueChange = { onFormChange(form.copy(version = it)) }, label = { Text("Versión (máximo 80)") }, isError = errors.version, enabled = editable, modifier = Modifier.fillMaxWidth())
+                HogarField(
+                    value = form.vendor,
+                    onValueChange = {
+                        onFormChange(form.copy(vendor = it))
+                    },
+                    label = "Fabricante",
+                    help = if (errors.vendor) {
+                        "Completa el fabricante con un máximo de 80 caracteres."
+                    } else {
+                        "Máximo 80 caracteres."
+                    },
+                    isError = errors.vendor,
+                    enabled = editable,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                HogarField(
+                    value = form.product,
+                    onValueChange = {
+                        onFormChange(form.copy(product = it))
+                    },
+                    label = "Producto",
+                    help = if (errors.product) {
+                        "Completa el producto con un máximo de 120 caracteres."
+                    } else {
+                        "Máximo 120 caracteres."
+                    },
+                    isError = errors.product,
+                    enabled = editable,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                HogarField(
+                    value = form.version,
+                    onValueChange = {
+                        onFormChange(form.copy(version = it))
+                    },
+                    label = "Versión",
+                    help = if (errors.version) {
+                        "Completa la versión con un máximo de 80 caracteres."
+                    } else {
+                        "Máximo 80 caracteres."
+                    },
+                    isError = errors.version,
+                    enabled = editable,
+                    modifier = Modifier.fillMaxWidth()
+                )
                 Text("¿De dónde obtuviste estos datos?")
                 IdentificationSource.entries.filter { it != IdentificationSource.SERVICE_RESPONSE }.forEach { source ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -113,10 +163,22 @@ fun EvaluationScreen(
 @Composable
 fun EvaluationResultPanel(result: EvaluationResult, modifier: Modifier = Modifier, onFindingClick: ((Int) -> Unit)? = null) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Resultados", style = MaterialTheme.typography.titleLarge)
+        Text("Hallazgos", style = MaterialTheme.typography.titleLarge)
         Text("Reglas: ${result.rulesetVersion} · Evaluado: ${result.evaluatedAt}")
         Text("NVD: ${result.sources.nvd.description()} · KEV: ${result.sources.kev.description()}")
         result.sources.checkedAt?.let { Text("Fuentes consultadas: $it") }
+        if (
+            result.findings.any {
+                it.category == FindingCategory.POSSIBLE_CVE_MATCH
+            } || result.possibleCveMatches.isNotEmpty()
+        ) {
+            Text(
+                text = "Las coincidencias CVE son posibles; " +
+                        "no confirman una vulnerabilidad.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
         if (result.findings.isEmpty()) Text("La evaluación no devolvió hallazgos.")
         result.findings.withIndex().sortedBy { (_, finding) ->
             when (finding.priority) {
@@ -126,22 +188,87 @@ fun EvaluationResultPanel(result: EvaluationResult, modifier: Modifier = Modifie
                 FindingPriority.UNDETERMINED -> 3
             }
         }.forEach { (index, finding) ->
-            val cardModifier = if (onFindingClick == null) Modifier else Modifier.clickable(onClickLabel = "Ver detalle del hallazgo") { onFindingClick(index) }
-            OutlinedCard(modifier = cardModifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(finding.title, style = MaterialTheme.typography.titleMedium)
-                    Text("Categoría: ${finding.category.description()} · Prioridad: ${finding.priority.description()} · Certeza: ${finding.confidence.description()}")
-                    Text("Evidencia: ${finding.evidence}")
-                    Text(finding.explanation)
-                    Text("Recomendación: ${finding.action}")
-                    Text("Limitación: ${finding.limitation}")
-                    Text("Regla: ${finding.ruleId}")
-                    finding.cve?.let { Text("Coincidencia posible: $it") }
-                    if (onFindingClick != null) Text("Ver detalle")
+            val shape = RoundedCornerShape(20.dp)
+
+            val cardModifier = if (onFindingClick != null) {
+                Modifier
+                    .fillMaxWidth()
+                    .clip(shape)
+                    .clickable(
+                        role = Role.Button,
+                        onClickLabel = "Ver hallazgo"
+                    ) {
+                        onFindingClick(index)
+                    }
+            } else {
+                Modifier.fillMaxWidth()
+            }
+
+            Card(
+                modifier = cardModifier,
+                shape = shape,
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = finding.category.description(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Text(
+                        text = if (
+                            finding.category == FindingCategory.POSSIBLE_CVE_MATCH
+                        ) {
+                            finding.cve ?: finding.title
+                        } else {
+                            finding.title
+                        },
+                        style = MaterialTheme.typography.titleLarge
+                    )
+
+                    Text(
+                        text = "Prioridad: ${finding.priority.description()} · " +
+                                "Certeza: ${finding.confidence.description()}",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    if (onFindingClick != null) {
+                        Text(
+                            text = "Ver hallazgo",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    } else {
+                        // Conserva la información cuando el panel se utiliza
+                        // sin navegación hacia una pantalla de detalle.
+                        Text("Evidencia: ${finding.evidence}")
+                        Text(finding.explanation)
+                        Text("Recomendación: ${finding.action}")
+                        Text("Limitación: ${finding.limitation}")
+                        Text(
+                            text = "Regla: ${finding.ruleId}",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
                 }
             }
         }
-        result.possibleCveMatches.forEach { match ->
+        result.possibleCveMatches
+            .filter { match ->
+                onFindingClick == null ||
+                        result.findings.none { finding ->
+                            finding.cve == match.cve
+                        }
+            }
+            .forEach { match ->
             OutlinedCard(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Coincidencia posible: ${match.cve}", style = MaterialTheme.typography.titleMedium)

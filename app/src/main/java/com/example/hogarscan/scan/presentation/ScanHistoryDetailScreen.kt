@@ -32,59 +32,175 @@ fun ScanHistoryDetailScreen(
     onBack: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
-    onEvaluate: (() -> Unit)? = null,
+    targetEvaluationContent: @Composable (ScanRecord, String) -> Unit =
+        { _, _ -> },
     evaluationContent: @Composable (ScanRecord) -> Unit = {}
 ) {
     val record = (state as? ScanDetailUiState.Loaded)?.record
-    var target by rememberSaveable(record?.ownerId, record?.id) { mutableStateOf<String?>(null) }
-    val probes = record?.results?.filter { it.address.toString() == target }.orEmpty()
-    val showTarget = probes.isNotEmpty()
-    val back = { if (showTarget) target = null else onBack() }
+
+    var target by rememberSaveable(record?.ownerId, record?.id) {
+        mutableStateOf<String?>(null)
+    }
+
+    // Captura la selección para utilizar el mismo valor
+    // durante esta composición.
+    val selectedTarget = target
+    val probes = record?.results
+        ?.filter { it.address.toString() == selectedTarget }
+        .orEmpty()
+
+    val showTarget =
+        record != null && selectedTarget != null && probes.isNotEmpty()
+
+    val back: () -> Unit = {
+        if (showTarget) {
+            target = null
+        } else {
+            onBack()
+        }
+    }
+
     BackHandler(enabled = showTarget, onBack = back)
-    key(target) {
-        Column(modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            if (showTarget) {
+
+    key(selectedTarget) {
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .imePadding()
+                .verticalScroll(rememberScrollState())
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            if (
+                record != null &&
+                selectedTarget != null &&
+                probes.isNotEmpty()
+            ) {
                 HogarBackHeader("Detalle de dirección", back)
-                Text(requireNotNull(target), style = MaterialTheme.typography.headlineMedium, fontFamily = SpaceMono)
-                val identities = probes.filter { it.service?.product != null }
-                if (identities.isNotEmpty()) HogarCard {
-                    Text("Identidad anunciada", style = MaterialTheme.typography.titleLarge)
-                    identities.forEach { probe ->
-                        val evidence = requireNotNull(probe.service)
-                        Text("Puerto ${probe.port} · ${evidence.product} · ${evidence.version}")
-                    }
-                    Text("El anuncio no verifica el software instalado.", style = MaterialTheme.typography.bodySmall)
+
+                Text(
+                    selectedTarget,
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontFamily = SpaceMono
+                )
+
+                val identities = probes.mapNotNull { probe ->
+                    probe.service
+                        ?.takeIf { it.product != null }
+                        ?.let { probe.port to it }
                 }
-                Text("Conexiones y protocolos", style = MaterialTheme.typography.titleLarge)
+
+                if (identities.isNotEmpty()) {
+                    HogarCard {
+                        Text(
+                            "Identidad anunciada",
+                            style = MaterialTheme.typography.titleLarge
+                        )
+
+                        identities.forEach { (port, evidence) ->
+                            Text(
+                                "Puerto $port · " +
+                                        "${evidence.product} · ${evidence.version}"
+                            )
+                        }
+
+                        Text(
+                            "El anuncio no verifica el software instalado.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+
+                // Solo se invoca con una revisión cargada
+                // y una dirección seleccionada válida.
+                targetEvaluationContent(record, selectedTarget)
+
+                Text(
+                    "Conexiones y protocolos",
+                    style = MaterialTheme.typography.titleLarge
+                )
+
                 HogarCard {
                     probes.forEach { probe ->
-                        Text("${probe.port} · ${probe.outcome.label()}", style = MaterialTheme.typography.titleMedium)
-                        Text(probe.service?.let { "${it.protocol} · respuesta compatible" } ?: "Protocolo no identificado")
-                        Text("${probe.durationMillis} ms", style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            "${probe.port} · ${probe.outcome.label()}",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+
+                        Text(
+                            probe.service?.let {
+                                "${it.protocol} · respuesta compatible"
+                            } ?: "Protocolo no identificado"
+                        )
+
+                        Text(
+                            "${probe.durationMillis} ms",
+                            style = MaterialTheme.typography.bodySmall
+                        )
                     }
                 }
-                HogarButton("Volver a los resultados", back, Modifier.fillMaxWidth(), secondary = true)
-                if (onEvaluate != null) HogarButton("Abrir evaluación de la revisión", onEvaluate, Modifier.fillMaxWidth())
+
+                HogarButton(
+                    "Volver a los resultados",
+                    back,
+                    Modifier.fillMaxWidth(),
+                    secondary = true
+                )
             } else {
                 HogarBackHeader("Resultados de revisión", back)
+
                 when (state) {
                     ScanDetailUiState.Closed -> Unit
-                    ScanDetailUiState.Loading -> HogarLoading("Cargando revisión…")
-                    ScanDetailUiState.NotFound -> HogarNotice("Revisión no disponible", "No se encontró en este perfil.")
+
+                    ScanDetailUiState.Loading ->
+                        HogarLoading("Cargando revisión…")
+
+                    ScanDetailUiState.NotFound ->
+                        HogarNotice(
+                            "Revisión no disponible",
+                            "No se encontró en este perfil."
+                        )
+
                     ScanDetailUiState.Error -> {
-                        HogarNotice("No se pudo cargar la revisión", "Vuelve a intentarlo.", error = true)
-                        HogarButton("Reintentar", onRetry, Modifier.fillMaxWidth())
+                        HogarNotice(
+                            "No se pudo cargar la revisión",
+                            "Vuelve a intentarlo.",
+                            error = true
+                        )
+
+                        HogarButton(
+                            "Reintentar",
+                            onRetry,
+                            Modifier.fillMaxWidth()
+                        )
                     }
+
                     is ScanDetailUiState.Loaded -> {
                         val data = state.record
-                        Text(DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
-                            .format(Date(data.startedAtMillis)), style = MaterialTheme.typography.bodySmall)
+
+                        Text(
+                            DateFormat.getDateTimeInstance(
+                                DateFormat.MEDIUM,
+                                DateFormat.SHORT
+                            ).format(Date(data.startedAtMillis)),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+
                         val status = ScanStatus.valueOf(data.status.name)
-                        ScanResultsPanel(ScanUiState(status, data.config, data.results),
-                            onTarget = { target = it.toString() }, details = { evaluationContent(data) })
+
+                        ScanResultsPanel(
+                            ScanUiState(status, data.config, data.results),
+                            onTarget = { target = it.toString() },
+                            details = { evaluationContent(data) }
+                        )
+
                         if (data.status == ScanRecordStatus.RUNNING) {
-                            HogarButton("Actualizar detalle", onRetry, Modifier.fillMaxWidth(), secondary = true)
+                            HogarButton(
+                                "Actualizar detalle",
+                                onRetry,
+                                Modifier.fillMaxWidth(),
+                                secondary = true
+                            )
                         }
                     }
                 }

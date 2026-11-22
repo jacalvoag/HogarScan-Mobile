@@ -19,6 +19,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.hogarscan.evaluations.domain.model.IdentificationSource
 import com.example.hogarscan.scan.domain.model.ScanRecord
 import com.example.hogarscan.ui.components.*
+import com.example.hogarscan.scan.domain.model.Ipv4Address
 
 @Composable
 fun ScanEvaluationPanel(
@@ -62,14 +63,96 @@ fun ScanEvaluationPanel(
             ScanEvaluationUiState.Ready -> if (identifying) {
                 Text("Usa datos de una etiqueta o un panel al que ya tengas acceso.")
                 ObservedIdentificationsPanel(record, viewModel::useObservedIdentification)
-                HogarField(form.address, { value -> viewModel.editIdentification { it.copy(address = value) } },
-                    "IPv4 del objetivo", "Dirección de esta revisión", Modifier.fillMaxWidth())
-                HogarField(form.vendor, { value -> viewModel.editIdentification { it.copy(vendor = value) } },
-                    "Fabricante", "Revisa el fabricante indicado en el equipo", Modifier.fillMaxWidth())
-                HogarField(form.product, { value -> viewModel.editIdentification { it.copy(product = value) } },
-                    "Producto", "Producto o componente", Modifier.fillMaxWidth())
-                HogarField(form.version, { value -> viewModel.editIdentification { it.copy(version = value) } },
-                    "Versión", "Completa los tres datos para usar la declaración", Modifier.fillMaxWidth())
+                val showErrors = form.error != null
+
+                val parsedAddress = runCatching {
+                    Ipv4Address.parse(form.address.trim())
+                }.getOrNull()
+
+                val addressError = showErrors && (
+                        parsedAddress == null ||
+                                parsedAddress !in record.config.targetAddresses
+                        )
+
+                val vendorError = showErrors && (
+                        form.vendor.isBlank() || form.vendor.length > 80
+                        )
+
+                val productError = showErrors && (
+                        form.product.isBlank() || form.product.length > 120
+                        )
+
+                val versionError = showErrors && (
+                        form.version.isBlank() || form.version.length > 80
+                        )
+
+                HogarField(
+                    value = form.address,
+                    onValueChange = { value ->
+                        viewModel.editIdentification {
+                            it.copy(address = value)
+                        }
+                    },
+                    label = "IPv4 del objetivo",
+                    help = if (addressError) {
+                        "Introduce una dirección incluida en esta revisión."
+                    } else {
+                        "Dirección de esta revisión."
+                    },
+                    isError = addressError,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                HogarField(
+                    value = form.vendor,
+                    onValueChange = { value ->
+                        viewModel.editIdentification {
+                            it.copy(vendor = value)
+                        }
+                    },
+                    label = "Fabricante",
+                    help = if (vendorError) {
+                        "Completa el fabricante con un máximo de 80 caracteres."
+                    } else {
+                        "Fabricante indicado en la etiqueta o el panel."
+                    },
+                    isError = vendorError,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                HogarField(
+                    value = form.product,
+                    onValueChange = { value ->
+                        viewModel.editIdentification {
+                            it.copy(product = value)
+                        }
+                    },
+                    label = "Producto",
+                    help = if (productError) {
+                        "Completa el producto con un máximo de 120 caracteres."
+                    } else {
+                        "Nombre del producto o componente."
+                    },
+                    isError = productError,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                HogarField(
+                    value = form.version,
+                    onValueChange = { value ->
+                        viewModel.editIdentification {
+                            it.copy(version = value)
+                        }
+                    },
+                    label = "Versión",
+                    help = if (versionError) {
+                        "Completa la versión con un máximo de 80 caracteres."
+                    } else {
+                        "Versión indicada en la etiqueta o el panel."
+                    },
+                    isError = versionError,
+                    modifier = Modifier.fillMaxWidth()
+                )
                 Text("Procedencia", style = MaterialTheme.typography.titleLarge)
                 for ((source, label) in listOf(
                     IdentificationSource.USER_ADMIN_PANEL to "Panel de administración",

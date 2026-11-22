@@ -45,6 +45,8 @@ import com.example.hogarscan.R
 import com.example.hogarscan.auth.domain.model.SessionSnapshot
 import com.example.hogarscan.auth.domain.model.SessionState
 import com.example.hogarscan.ui.components.*
+import com.example.hogarscan.auth.domain.model.AuthFailure
+import com.example.hogarscan.auth.domain.policy.AuthInputPolicy
 
 enum class AccountPage { Account, Login, Register }
 
@@ -103,7 +105,7 @@ fun AuthScreen(
             .fillMaxSize()
             .imePadding()
             .verticalScroll(rememberScrollState())
-            .padding(24.dp),
+            .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         if (credentials) {
@@ -144,26 +146,27 @@ fun AuthScreen(
         }
 
         state.notice?.let { notice ->
-            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = notice.message(),
-                        modifier = Modifier.semantics {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                HogarNotice(
+                    title = if (notice is AuthNotice.Failure) {
+                        "No se pudo completar la operación"
+                    } else {
+                        "Aviso de la cuenta"
+                    },
+                    body = notice.message(),
+                    error = notice is AuthNotice.Failure,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics {
                             liveRegion = LiveRegionMode.Polite
-                        },
-                        color = if (notice is AuthNotice.Failure) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
                         }
-                    )
+                )
 
-                    TextButton(onClick = onDismissNotice) {
-                        Text(stringResource(R.string.auth_dismiss))
-                    }
+                TextButton(onClick = onDismissNotice) {
+                    Text(stringResource(R.string.auth_dismiss))
                 }
             }
         }
@@ -207,15 +210,14 @@ fun AuthScreen(
                     deleteContent()
                 }
 
-                Button(
+                HogarButton(
+                    text = stringResource(R.string.auth_logout),
                     onClick = { onLogout(session.session) },
                     enabled = state.operation == null,
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("auth_logout")
-                ) {
-                    Text(stringResource(R.string.auth_logout))
-                }
+                )
             }
         }
     }
@@ -231,124 +233,216 @@ private fun AuthForm(
     onPage: (AccountPage) -> Unit
 ) {
     var localRegistering by rememberSaveable { mutableStateOf(false) }
-    val registering = page?.let { it == AccountPage.Register } ?: localRegistering
+    val registering = page?.let {
+        it == AccountPage.Register
+    } ?: localRegistering
+
     var email by rememberSaveable { mutableStateOf("") }
+
+    // Las contraseñas permanecen únicamente en memoria.
     var password by remember { mutableStateOf("") }
     var confirmation by remember { mutableStateOf("") }
     var visible by remember { mutableStateOf(false) }
 
+    var inputFailure by remember {
+        mutableStateOf<AuthFailure?>(null)
+    }
+
     val focus = LocalFocusManager.current
+
+    fun clearSecrets() {
+        password = ""
+        confirmation = ""
+        visible = false
+        focus.clearFocus()
+    }
 
     LaunchedEffect(state.notice) {
         if (state.notice == AuthNotice.AccountCreated) {
             localRegistering = false
-            password = ""
-            confirmation = ""
-            focus.clearFocus()
+            inputFailure = null
+            clearSecrets()
         }
     }
 
     val submit: () -> Unit = {
         if (state.canSubmitCredentials) {
-            val submittedPassword = password
-            val submittedConfirmation = confirmation
+            onDismissNotice()
 
-            password = ""
-            confirmation = ""
-            focus.clearFocus()
-
-            if (registering) {
-                onRegister(email, submittedPassword, submittedConfirmation)
+            val normalizedEmail = AuthInputPolicy.normalizeEmail(email)
+            val failure = if (registering) {
+                AuthInputPolicy.validateRegistration(
+                    normalizedEmail,
+                    password,
+                    confirmation
+                )
             } else {
-                onLogin(email, submittedPassword)
+                AuthInputPolicy.validateLogin(
+                    normalizedEmail,
+                    password
+                )
+            }
+
+            inputFailure = failure
+
+            if (failure == null) {
+                val submittedPassword = password
+                val submittedConfirmation = confirmation
+
+                clearSecrets()
+
+                if (registering) {
+                    onRegister(
+                        email,
+                        submittedPassword,
+                        submittedConfirmation
+                    )
+                } else {
+                    onLogin(email, submittedPassword)
+                }
             }
         }
     }
 
-    if (page == null) Text(
-        stringResource(
-            if (registering) {
-                R.string.auth_register_title
-            } else {
-                R.string.auth_login_title
-            }
-        ),
-        style = MaterialTheme.typography.titleLarge
-    )
+    if (page == null) {
+        Text(
+            stringResource(
+                if (registering) {
+                    R.string.auth_register_title
+                } else {
+                    R.string.auth_login_title
+                }
+            ),
+            style = MaterialTheme.typography.titleLarge
+        )
+    }
 
-    OutlinedTextField(
+    val emailError = inputFailure == AuthFailure.INVALID_EMAIL
+    val passwordError = inputFailure == AuthFailure.INVALID_PASSWORD
+    val confirmationError =
+        inputFailure == AuthFailure.PASSWORD_CONFIRMATION_MISMATCH
+
+    HogarField(
         value = email,
-        onValueChange = { email = it },
-        label = { Text(stringResource(R.string.auth_email)) },
+        onValueChange = {
+            email = it
+            inputFailure = null
+        },
+        label = stringResource(R.string.auth_email),
+        help = if (emailError) {
+            stringResource(R.string.auth_error_email)
+        } else if (registering) {
+            "Usa un correo al que tengas acceso."
+        } else {
+            "El correo con el que creaste tu cuenta."
+        },
         enabled = state.canSubmitCredentials,
-        singleLine = true,
+        isError = emailError,
         keyboardOptions = KeyboardOptions(
             autoCorrectEnabled = false,
             keyboardType = KeyboardType.Email,
             imeAction = ImeAction.Next
         ),
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("auth_email")
+        modifier = Modifier.fillMaxWidth(),
+        fieldModifier = Modifier.testTag("auth_email")
     )
 
-    OutlinedTextField(
+    val passwordHelp = stringResource(
+        if (passwordError) {
+            R.string.auth_error_password
+        } else if (registering) {
+            R.string.auth_password_registration_hint
+        } else {
+            R.string.auth_password_login_hint
+        }
+    )
+
+    val passwordTransformation = if (visible) {
+        VisualTransformation.None
+    } else {
+        PasswordVisualTransformation()
+    }
+
+    HogarField(
         value = password,
-        onValueChange = { password = it },
-        label = { Text(stringResource(R.string.auth_password)) },
-        supportingText = {
-            Text(
-                stringResource(
-                    if (registering) {
-                        R.string.auth_password_registration_hint
-                    } else {
-                        R.string.auth_password_login_hint
-                    }
-                )
-            )
+        onValueChange = {
+            password = it
+            inputFailure = null
         },
-        visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
+        label = stringResource(R.string.auth_password),
+        help = passwordHelp,
         enabled = state.canSubmitCredentials,
-        singleLine = true,
+        isError = passwordError,
+        visualTransformation = passwordTransformation,
         keyboardOptions = KeyboardOptions(
             autoCorrectEnabled = false,
             keyboardType = KeyboardType.Password,
-            imeAction = if (registering) ImeAction.Next else ImeAction.Done
+            imeAction = if (registering) {
+                ImeAction.Next
+            } else {
+                ImeAction.Done
+            }
         ),
-        keyboardActions = KeyboardActions(onDone = { submit() }),
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("auth_password")
+        keyboardActions = KeyboardActions(
+            onDone = { submit() }
+        ),
+        modifier = Modifier.fillMaxWidth(),
+        fieldModifier = Modifier.testTag("auth_password")
     )
 
     if (registering) {
-        OutlinedTextField(
+        HogarField(
             value = confirmation,
-            onValueChange = { confirmation = it },
-            label = {
-                Text(stringResource(R.string.auth_confirmation))
+            onValueChange = {
+                confirmation = it
+                inputFailure = null
             },
-            visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
+            label = stringResource(R.string.auth_confirmation),
+            help = if (confirmationError) {
+                stringResource(R.string.auth_error_confirmation)
+            } else {
+                "Escribe nuevamente la misma contraseña."
+            },
             enabled = state.canSubmitCredentials,
-            singleLine = true,
+            isError = confirmationError,
+            visualTransformation = passwordTransformation,
             keyboardOptions = KeyboardOptions(
                 autoCorrectEnabled = false,
                 keyboardType = KeyboardType.Password,
                 imeAction = ImeAction.Done
             ),
-            keyboardActions = KeyboardActions(onDone = { submit() }),
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag("auth_confirmation")
+            keyboardActions = KeyboardActions(
+                onDone = { submit() }
+            ),
+            modifier = Modifier.fillMaxWidth(),
+            fieldModifier = Modifier.testTag("auth_confirmation")
         )
     }
 
-    if (page != null) TextButton(
-        onClick = { visible = !visible }, modifier = Modifier.fillMaxWidth(),
-        enabled = state.canSubmitCredentials
-    ) { Text(if (visible) "Ocultar contraseña" else "Mostrar contraseña") }
+    if (page != null) {
+        TextButton(
+            onClick = { visible = !visible },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = state.canSubmitCredentials
+        ) {
+            Text(
+                if (visible) {
+                    "Ocultar contraseña"
+                } else {
+                    "Mostrar contraseña"
+                }
+            )
+        }
+    }
 
-    Button(
+    HogarButton(
+        text = stringResource(
+            if (registering) {
+                R.string.auth_register
+            } else {
+                R.string.auth_login
+            }
+        ),
         onClick = submit,
         enabled = state.canSubmitCredentials &&
                 email.isNotBlank() &&
@@ -357,35 +451,37 @@ private fun AuthForm(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("auth_submit")
-    ) {
-        Text(
-            stringResource(
-                if (registering) R.string.auth_register
-                else R.string.auth_login
-            )
-        )
-    }
+    )
 
-    TextButton(
+    HogarButton(
+        text = stringResource(
+            if (registering) {
+                R.string.auth_switch_login
+            } else {
+                R.string.auth_switch_register
+            }
+        ),
         onClick = {
-            password = ""
-            confirmation = ""
-            visible = false
-            focus.clearFocus()
+            clearSecrets()
+            inputFailure = null
             onDismissNotice()
-            if (page == null) localRegistering = !registering
-            else onPage(if (registering) AccountPage.Login else AccountPage.Register)
+
+            if (page == null) {
+                localRegistering = !registering
+            } else {
+                onPage(
+                    if (registering) {
+                        AccountPage.Login
+                    } else {
+                        AccountPage.Register
+                    }
+                )
+            }
         },
         enabled = state.canSubmitCredentials,
+        secondary = true,
         modifier = Modifier
             .fillMaxWidth()
             .testTag("auth_switch_mode")
-    ) {
-        Text(
-            stringResource(
-                if (registering) R.string.auth_switch_login
-                else R.string.auth_switch_register
-            )
-        )
-    }
+    )
 }
