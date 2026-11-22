@@ -118,7 +118,7 @@ fun EvaluationScreen(
 @Composable
 fun EvaluationResultPanel(result: EvaluationResult, modifier: Modifier = Modifier, onFindingClick: ((Int) -> Unit)? = null) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Resultados", style = MaterialTheme.typography.titleLarge)
+        Text("Hallazgos", style = MaterialTheme.typography.titleLarge)
         Text("Reglas: ${result.rulesetVersion} · Evaluado: ${result.evaluatedAt}")
         Text("NVD: ${result.sources.nvd.description()} · KEV: ${result.sources.kev.description()}")
         result.sources.checkedAt?.let { Text("Fuentes consultadas: $it") }

@@ -41,6 +41,7 @@ import com.example.hogarscan.ui.components.HogarBrandHeader
 import com.example.hogarscan.ui.components.HogarButton
 import com.example.hogarscan.ui.components.HogarCard
 import com.example.hogarscan.evaluations.presentation.ScanEvaluationUiState
+import com.example.hogarscan.evaluations.presentation.TargetEvaluationPanel
 
 @Composable
 fun ScanHistoryRoute(
@@ -109,7 +110,26 @@ fun ScanHistoryRoute(
             onBack = closeDetail,
             onRetry = viewModel::retryDetail,
             modifier = modifier,
-            onEvaluate = if (evaluation != null) ({ evaluationKey = detailKey }) else null,
+            targetEvaluationContent = { currentRecord, address ->
+                TargetEvaluationPanel(
+                    scanId = currentRecord.id,
+                    ownerId = currentRecord.ownerId,
+                    address = address,
+                    state = evaluationState,
+                    onFindingSelected = { finding ->
+                        viewModel.openFinding(
+                            currentRecord.id,
+                            currentRecord.ownerId,
+                            finding
+                        )
+                    },
+                    onOpenEvaluation = if (evaluation != null) {
+                        { evaluationKey = detailKey }
+                    } else {
+                        null
+                    }
+                )
+            },
             evaluationContent = { record ->
                 if (record.status != ScanRecordStatus.RUNNING) {
                     OutlinedButton(enabled = !deletion.pending, onClick = viewModel::requestDeletion) { Text("Borrar esta revisión del teléfono") }
