@@ -38,5 +38,8 @@ data class ScanRecordEntity(
     val startedAtMillis: Long,
 
     @ColumnInfo(name = "finished_at_millis")
-    val finishedAtMillis: Long? = null
+    val finishedAtMillis: Long? = null,
+
+    @ColumnInfo(name = "summary_generation")
+    val summaryGeneration: Int? = null
 )

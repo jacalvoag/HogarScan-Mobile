@@ -1,0 +1,6 @@
+blank_issues_enabled: true
+
+contact_links:
+  - name: Reportar un problema de seguridad
+    url: https://github.com/jacalvoag/HogarScan-Mobile/blob/develop/SECURITY.md
+    about: Consulta el procedimiento privado antes de compartir detalles.

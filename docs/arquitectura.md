@@ -127,9 +127,11 @@ La conectividad se comprobará también en un teléfono físico.
 
 Los parámetros iniciales del piloto son:
 - Hasta 254 direcciones por rango.
-- Puertos disponibles: 22, 23, 80, 443, 445 y 3389.
+- Puertos disponibles: 21, 22, 23, 80, 443, 445 y 3389 (hasta seis seleccionados).
 - Hasta 20 conexiones simultáneas.
 - Tiempo de espera de 1000 ms por conexión.
 - Sin reintentos automáticos.
 
 Estos parámetros podrán ajustarse con evidencia de las pruebas físicas.
+La implementación de identificación y sus límites se describen en
+[alcance original y validación](alcance-original-y-validacion.md).

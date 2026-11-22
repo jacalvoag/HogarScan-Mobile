@@ -31,6 +31,7 @@ class ScanCoordinator(
     suspend fun execute(
         request: AuthorizedScan,
         onStarted: () -> Unit = {},
+        onRecorded: (String) -> Unit = {},
         onResult: (ProbeResult) -> Unit
     ) {
         request.claim()
@@ -47,6 +48,7 @@ class ScanCoordinator(
             historyRecorder?.let { recorder ->
                 withContext(NonCancellable) {
                     historyRecord = recorder.start(request.config)
+                    historyRecord?.let { onRecorded(it.id) }
                 }
                 // El guardado pudo suspender: comprueba de nuevo la conexión.
                 checkAuthorization(request)

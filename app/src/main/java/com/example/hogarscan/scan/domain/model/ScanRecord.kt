@@ -7,7 +7,8 @@ class ScanRecord(
     val startedAtMillis: Long,
     val status: ScanRecordStatus,
     results: List<ProbeResult> = emptyList(),
-    val finishedAtMillis: Long? = null
+    val finishedAtMillis: Long? = null,
+    val summaryGeneration: Int? = null
 ) {
     val results: List<ProbeResult> = results.toList()
 
@@ -23,6 +24,9 @@ class ScanRecord(
         }
         require(finishedAtMillis == null || finishedAtMillis >= 0L) {
             "La fecha de cierre no puede ser negativa."
+        }
+        require(summaryGeneration == null || summaryGeneration >= 0) {
+            "La generación del resumen no puede ser negativa."
         }
 
         if (status == ScanRecordStatus.RUNNING) {

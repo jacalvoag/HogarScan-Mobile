@@ -11,9 +11,11 @@ data class ProbeResult(
     val address: Ipv4Address,
     val port: Int,
     val outcome: ProbeOutcome,
-    val durationMillis: Long
+    val durationMillis: Long,
+    val service: ServiceEvidence? = null
 ) {
     init {
+        require(service == null || outcome == ProbeOutcome.ACCEPTED)
         require(port in 1..65_535) {
             "El puerto TCP debe estar entre 1 y 65535."
         }

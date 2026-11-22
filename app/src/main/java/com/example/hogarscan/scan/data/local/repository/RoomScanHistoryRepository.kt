@@ -86,7 +86,11 @@ class RoomScanHistoryRepository(
                 address = result.address.value,
                 port = result.port,
                 outcome = result.outcome,
-                durationMillis = result.durationMillis
+                durationMillis = result.durationMillis,
+                serviceProtocol = result.service?.protocol?.name,
+                serviceVendor = result.service?.vendor,
+                serviceProduct = result.service?.product,
+                serviceVersion = result.service?.version
             )
         )
     }
