@@ -28,6 +28,8 @@ import org.junit.After
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.assertTextEquals
 
 @RunWith(AndroidJUnit4::class)
 class ScanIdentificationRestorationTest {
@@ -59,13 +61,33 @@ class ScanIdentificationRestorationTest {
         restoration.setContent { MaterialTheme {
             Column(Modifier.verticalScroll(rememberScrollState())) { ScanEvaluationPanel(viewModel, record) }
         } }
-        compose.onNodeWithText("IPv4 del objetivo").performScrollTo().performTextInput(address.toString())
-        compose.onNodeWithText("Fabricante").performScrollTo().performTextInput("Acme")
-        compose.onNodeWithText("Producto").performScrollTo().performTextInput("Router")
-        compose.onNodeWithText("Versión").performScrollTo().performTextInput("1")
+        compose.onNodeWithContentDescription("IPv4 del objetivo")
+            .performScrollTo()
+            .performTextInput(address.toString())
+
+        compose.onNodeWithContentDescription("Fabricante")
+            .performScrollTo()
+            .performTextInput("Acme")
+
+        compose.onNodeWithContentDescription("Producto")
+            .performScrollTo()
+            .performTextInput("Router")
+
+        compose.onNodeWithContentDescription("Versión")
+            .performScrollTo()
+            .performTextInput("1")
         restoration.emulateSavedInstanceStateRestore()
-        compose.onNodeWithText("Acme").assertExists()
-        compose.onNodeWithText("Router").assertExists()
+        compose.onNodeWithContentDescription("IPv4 del objetivo")
+            .assertTextEquals(address.toString())
+
+        compose.onNodeWithContentDescription("Fabricante")
+            .assertTextEquals("Acme")
+
+        compose.onNodeWithContentDescription("Producto")
+            .assertTextEquals("Router")
+
+        compose.onNodeWithContentDescription("Versión")
+            .assertTextEquals("1")
         compose.onNodeWithText("Agregar identificación").performScrollTo().performClick()
         restoration.emulateSavedInstanceStateRestore()
         compose.onNodeWithText("Quitar identificación de $address").assertExists()
