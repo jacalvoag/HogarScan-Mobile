@@ -210,6 +210,71 @@ class AuthScreenTest {
         assertEmptyPassword()
     }
 
+    @Test
+    fun correoInvalidoMuestraErrorSinEnviarLogin() {
+        var calls = 0
+
+        screen(
+            onLogin = { _, _ -> calls++ }
+        )
+
+        compose.onNodeWithTag("auth_email")
+            .performTextInput("correo-invalido")
+
+        compose.onNodeWithTag("auth_password")
+            .performScrollTo()
+            .performTextInput(PASSWORD)
+
+        compose.onNodeWithTag("auth_submit")
+            .performScrollTo()
+            .performClick()
+
+        compose.onNodeWithText(
+            text(R.string.auth_error_email)
+        ).assertExists()
+
+        compose.runOnIdle {
+            assertEquals(0, calls)
+        }
+    }
+
+    @Test
+    fun confirmacionDistintaMuestraErrorSinEnviarRegistro() {
+        var calls = 0
+
+        screen(
+            onRegister = { _, _, _ -> calls++ }
+        )
+
+        compose.onNodeWithTag("auth_switch_mode")
+            .performScrollTo()
+            .performClick()
+
+        compose.onNodeWithTag("auth_email")
+            .performScrollTo()
+            .performTextInput(EMAIL)
+
+        compose.onNodeWithTag("auth_password")
+            .performScrollTo()
+            .performTextInput(PASSWORD)
+
+        compose.onNodeWithTag("auth_confirmation")
+            .performScrollTo()
+            .performTextInput("Otra contraseña")
+
+        compose.onNodeWithTag("auth_submit")
+            .performScrollTo()
+            .performClick()
+
+        compose.onNodeWithText(
+            text(R.string.auth_error_confirmation)
+        ).assertExists()
+
+        compose.runOnIdle {
+            assertEquals(0, calls)
+        }
+    }
+
     private fun screen(
         state: AuthUiState = AuthUiState(SessionState.Guest),
         onLogin: (String, String) -> Unit = { _, _ -> },

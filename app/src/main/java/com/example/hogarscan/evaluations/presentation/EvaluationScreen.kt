@@ -37,6 +37,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
+import com.example.hogarscan.ui.components.HogarField
 
 @Composable
 fun EvaluationRoute(viewModel: EvaluationViewModel, modifier: Modifier = Modifier) {
@@ -79,9 +80,53 @@ fun EvaluationScreen(
             }
             if (form.enabled) {
                 Text("Los datos son declarados por ti y no se verifican automáticamente.")
-                OutlinedTextField(value = form.vendor, onValueChange = { onFormChange(form.copy(vendor = it)) }, label = { Text("Fabricante (máximo 80)") }, isError = errors.vendor, enabled = editable, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = form.product, onValueChange = { onFormChange(form.copy(product = it)) }, label = { Text("Producto (máximo 120)") }, isError = errors.product, enabled = editable, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = form.version, onValueChange = { onFormChange(form.copy(version = it)) }, label = { Text("Versión (máximo 80)") }, isError = errors.version, enabled = editable, modifier = Modifier.fillMaxWidth())
+                HogarField(
+                    value = form.vendor,
+                    onValueChange = {
+                        onFormChange(form.copy(vendor = it))
+                    },
+                    label = "Fabricante",
+                    help = if (errors.vendor) {
+                        "Completa el fabricante con un máximo de 80 caracteres."
+                    } else {
+                        "Máximo 80 caracteres."
+                    },
+                    isError = errors.vendor,
+                    enabled = editable,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                HogarField(
+                    value = form.product,
+                    onValueChange = {
+                        onFormChange(form.copy(product = it))
+                    },
+                    label = "Producto",
+                    help = if (errors.product) {
+                        "Completa el producto con un máximo de 120 caracteres."
+                    } else {
+                        "Máximo 120 caracteres."
+                    },
+                    isError = errors.product,
+                    enabled = editable,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                HogarField(
+                    value = form.version,
+                    onValueChange = {
+                        onFormChange(form.copy(version = it))
+                    },
+                    label = "Versión",
+                    help = if (errors.version) {
+                        "Completa la versión con un máximo de 80 caracteres."
+                    } else {
+                        "Máximo 80 caracteres."
+                    },
+                    isError = errors.version,
+                    enabled = editable,
+                    modifier = Modifier.fillMaxWidth()
+                )
                 Text("¿De dónde obtuviste estos datos?")
                 IdentificationSource.entries.filter { it != IdentificationSource.SERVICE_RESPONSE }.forEach { source ->
                     Row(verticalAlignment = Alignment.CenterVertically) {

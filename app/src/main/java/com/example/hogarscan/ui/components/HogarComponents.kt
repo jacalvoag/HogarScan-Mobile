@@ -41,6 +41,10 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import com.caverock.androidsvg.SVG
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.ui.text.input.VisualTransformation
 
 enum class HogarIcon(val asset: String) {
     Home("home"), History("history"), Statistics("stats"), Account("account"), Logo("logo"), Back("back")
@@ -137,13 +141,79 @@ fun HogarButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier
 }
 
 @Composable
-fun HogarField(value: String, onValueChange: (String) -> Unit, label: String,
-               help: String, modifier: Modifier = Modifier, enabled: Boolean = true,
-               isError: Boolean = false, keyboardOptions: KeyboardOptions = KeyboardOptions.Default) {
-    OutlinedTextField(value = value, onValueChange = onValueChange, label = { Text(label) },
-        supportingText = { Text(help) }, isError = isError, enabled = enabled,
-        keyboardOptions = keyboardOptions, singleLine = true, modifier = modifier,
-        shape = RoundedCornerShape(12.dp))
+fun HogarField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    help: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    isError: Boolean = false,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+    fieldModifier: Modifier = Modifier
+) {
+    val colors = MaterialTheme.colorScheme
+
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            color = when {
+                !enabled -> colors.onSurface.copy(alpha = 0.38f)
+                isError -> colors.error
+                else -> colors.onSurface
+            }
+        )
+
+        TextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = fieldModifier
+                .fillMaxWidth()
+                .semantics {
+                    contentDescription = label
+                },
+            enabled = enabled,
+            isError = isError,
+            singleLine = true,
+            textStyle = MaterialTheme.typography.bodyLarge,
+            keyboardOptions = keyboardOptions,
+            keyboardActions = keyboardActions,
+            visualTransformation = visualTransformation,
+            shape = RoundedCornerShape(12.dp),
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = colors.surfaceVariant,
+                unfocusedContainerColor = colors.surfaceVariant,
+                disabledContainerColor =
+                    colors.surfaceVariant.copy(alpha = 0.5f),
+                errorContainerColor = colors.errorContainer,
+                focusedTextColor = colors.onSurface,
+                unfocusedTextColor = colors.onSurface,
+                errorTextColor = colors.onErrorContainer,
+                focusedIndicatorColor = colors.primary,
+                unfocusedIndicatorColor = Color.Transparent,
+                disabledIndicatorColor = Color.Transparent,
+                errorIndicatorColor = colors.error
+            )
+        )
+
+        if (help.isNotBlank()) {
+            Text(
+                text = help,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (isError) {
+                    colors.error
+                } else {
+                    colors.onSurfaceVariant
+                }
+            )
+        }
+    }
 }
 
 @Composable
