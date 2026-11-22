@@ -32,6 +32,11 @@ import com.example.hogarscan.evaluations.domain.model.FindingConfidence
 import com.example.hogarscan.evaluations.domain.model.FindingPriority
 import com.example.hogarscan.evaluations.domain.model.IdentificationSource
 import com.example.hogarscan.evaluations.domain.model.SourceState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 
 @Composable
 fun EvaluationRoute(viewModel: EvaluationViewModel, modifier: Modifier = Modifier) {
@@ -117,6 +122,18 @@ fun EvaluationResultPanel(result: EvaluationResult, modifier: Modifier = Modifie
         Text("Reglas: ${result.rulesetVersion} · Evaluado: ${result.evaluatedAt}")
         Text("NVD: ${result.sources.nvd.description()} · KEV: ${result.sources.kev.description()}")
         result.sources.checkedAt?.let { Text("Fuentes consultadas: $it") }
+        if (
+            result.findings.any {
+                it.category == FindingCategory.POSSIBLE_CVE_MATCH
+            } || result.possibleCveMatches.isNotEmpty()
+        ) {
+            Text(
+                text = "Las coincidencias CVE son posibles; " +
+                        "no confirman una vulnerabilidad.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
         if (result.findings.isEmpty()) Text("La evaluación no devolvió hallazgos.")
         result.findings.withIndex().sortedBy { (_, finding) ->
             when (finding.priority) {
@@ -126,22 +143,87 @@ fun EvaluationResultPanel(result: EvaluationResult, modifier: Modifier = Modifie
                 FindingPriority.UNDETERMINED -> 3
             }
         }.forEach { (index, finding) ->
-            val cardModifier = if (onFindingClick == null) Modifier else Modifier.clickable(onClickLabel = "Ver detalle del hallazgo") { onFindingClick(index) }
-            OutlinedCard(modifier = cardModifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(finding.title, style = MaterialTheme.typography.titleMedium)
-                    Text("Categoría: ${finding.category.description()} · Prioridad: ${finding.priority.description()} · Certeza: ${finding.confidence.description()}")
-                    Text("Evidencia: ${finding.evidence}")
-                    Text(finding.explanation)
-                    Text("Recomendación: ${finding.action}")
-                    Text("Limitación: ${finding.limitation}")
-                    Text("Regla: ${finding.ruleId}")
-                    finding.cve?.let { Text("Coincidencia posible: $it") }
-                    if (onFindingClick != null) Text("Ver detalle")
+            val shape = RoundedCornerShape(20.dp)
+
+            val cardModifier = if (onFindingClick != null) {
+                Modifier
+                    .fillMaxWidth()
+                    .clip(shape)
+                    .clickable(
+                        role = Role.Button,
+                        onClickLabel = "Ver hallazgo"
+                    ) {
+                        onFindingClick(index)
+                    }
+            } else {
+                Modifier.fillMaxWidth()
+            }
+
+            Card(
+                modifier = cardModifier,
+                shape = shape,
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = finding.category.description(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Text(
+                        text = if (
+                            finding.category == FindingCategory.POSSIBLE_CVE_MATCH
+                        ) {
+                            finding.cve ?: finding.title
+                        } else {
+                            finding.title
+                        },
+                        style = MaterialTheme.typography.titleLarge
+                    )
+
+                    Text(
+                        text = "Prioridad: ${finding.priority.description()} · " +
+                                "Certeza: ${finding.confidence.description()}",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    if (onFindingClick != null) {
+                        Text(
+                            text = "Ver hallazgo",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    } else {
+                        // Conserva la información cuando el panel se utiliza
+                        // sin navegación hacia una pantalla de detalle.
+                        Text("Evidencia: ${finding.evidence}")
+                        Text(finding.explanation)
+                        Text("Recomendación: ${finding.action}")
+                        Text("Limitación: ${finding.limitation}")
+                        Text(
+                            text = "Regla: ${finding.ruleId}",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
                 }
             }
         }
-        result.possibleCveMatches.forEach { match ->
+        result.possibleCveMatches
+            .filter { match ->
+                onFindingClick == null ||
+                        result.findings.none { finding ->
+                            finding.cve == match.cve
+                        }
+            }
+            .forEach { match ->
             OutlinedCard(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Coincidencia posible: ${match.cve}", style = MaterialTheme.typography.titleMedium)
